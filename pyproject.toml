@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shiro"
-version = "0.0.0"
+version = "0.0.1"
 description = "shiro python library"
 authors = ["AndrewCh <andrey.chikin1223@gmail.com>"]
 license = "MIT"

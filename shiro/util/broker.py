@@ -1,3 +1,5 @@
+from typing import cast
+
 from aio_pika import ExchangeType
 from pamqp.common import FieldTable
 from pydantic import AmqpDsn, BaseModel, RedisDsn
@@ -13,7 +15,7 @@ class BrokerConfigForClient(BaseModel):
 
 class BrokerConfigForWorker(BrokerConfigForClient):
     queue_name: str
-    queue_bind_arguments: FieldTable
+    queue_bind_arguments: dict[str, str]
 
 
 def create_broker(
@@ -25,7 +27,9 @@ def create_broker(
         task_queues = [
             Queue(
                 name=config.queue_name,
-                bind_arguments={"x-match": "all"} | config.queue_bind_arguments,
+                bind_arguments=cast(
+                    FieldTable, {"x-match": "all"} | config.queue_bind_arguments
+                ),
             )
         ]
     broker = AioPikaBroker(

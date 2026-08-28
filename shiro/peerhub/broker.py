@@ -9,7 +9,6 @@ from collections.abc import Coroutine
 from typing import ParamSpec, TypeVar
 from uuid import UUID
 
-from pamqp.common import FieldTable
 from pydantic import model_validator
 from taskiq import AsyncTaskiqDecoratedTask
 from taskiq.kicker import AsyncKicker
@@ -24,7 +23,7 @@ class BrokerConfigForClient(b.BrokerConfigForClient):
 
 class BrokerConfigForWorker(b.BrokerConfigForWorker):
     peerhub_id: UUID
-    queue_bind_arguments: FieldTable = {}
+    queue_bind_arguments: dict[str, str] = {}
 
     @model_validator(mode="after")
     def set_queue_bind_arguments(self) -> "BrokerConfigForWorker":

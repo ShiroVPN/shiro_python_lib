@@ -7,7 +7,6 @@ __all__ = [
 
 from typing import TypeVar
 
-from pamqp.common import FieldTable
 from taskiq_aio_pika import AioPikaBroker
 
 import shiro.util as b
@@ -18,7 +17,7 @@ class BrokerConfigForClient(b.BrokerConfigForClient):
 
 
 class BrokerConfigForWorker(b.BrokerConfigForWorker):
-    queue_bind_arguments: FieldTable = {}
+    queue_bind_arguments: dict[str, str] = {}
 
 
 _broker: AioPikaBroker | None = None
