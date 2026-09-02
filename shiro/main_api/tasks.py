@@ -43,6 +43,10 @@ async def get_subscription(client_data: m.ClientGet) -> m.Subscription: ...
 async def get_subscription_options() -> list[m.SubscriptionConfig]: ...
 
 
+@declare_task(task_name="main_api.get_trial_subscription_config")
+async def get_trial_subscription_config() -> m.SubscriptionConfig: ...
+
+
 @declare_task(task_name="main_api.post_trial_subscription")
 async def post_trial_subscription(
     client_data: m.ClientGet,
