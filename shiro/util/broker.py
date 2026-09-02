@@ -22,7 +22,7 @@ def create_broker(
     config: BrokerConfigForClient | BrokerConfigForWorker,
 ) -> AioPikaBroker:
     exchange = Exchange(name=config.exchange_name, type=ExchangeType.HEADERS)
-    task_queues = None
+    task_queues = []
     if isinstance(config, BrokerConfigForWorker):
         task_queues = [
             Queue(
