@@ -25,7 +25,7 @@ class BrokerConfigForClient(b.BrokerConfigForClient):
     queue_name: str = BROKER_PEERHUB_QUEUE_NAME
 
 
-class BrokerConfigForWorker(b.BrokerConfigForWorker, BrokerConfigForClient):
+class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
     peerhub_id: UUID
     queue_bind_arguments: dict[str, str] = {}
 

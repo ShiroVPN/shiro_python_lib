@@ -20,7 +20,7 @@ class BrokerConfigForClient(b.BrokerConfigForClient):
     queue_name: str = BROKER_MAIN_API_QUEUE_NAME
 
 
-class BrokerConfigForWorker(b.BrokerConfigForWorker, BrokerConfigForClient):
+class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
     queue_bind_arguments: dict[str, str] = {}
 
 
