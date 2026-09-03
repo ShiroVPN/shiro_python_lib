@@ -11,12 +11,16 @@ from taskiq_aio_pika import AioPikaBroker
 
 import shiro.util as b
 
+BROKER_MAIN_API_QUEUE_NAME = "main_api_queue"
+BROKER_MAIN_API_EXCHANGE_NAME = "main_api_exchange"
+
 
 class BrokerConfigForClient(b.BrokerConfigForClient):
-    pass
+    exchange_name: str = BROKER_MAIN_API_EXCHANGE_NAME
+    queue_name: str = BROKER_MAIN_API_QUEUE_NAME
 
 
-class BrokerConfigForWorker(b.BrokerConfigForWorker):
+class BrokerConfigForWorker(b.BrokerConfigForWorker, BrokerConfigForClient):
     queue_bind_arguments: dict[str, str] = {}
 
 

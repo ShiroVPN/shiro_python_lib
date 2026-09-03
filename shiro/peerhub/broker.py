@@ -16,12 +16,16 @@ from taskiq_aio_pika import AioPikaBroker
 
 import shiro.util as b
 
+BROKER_PEERHUB_QUEUE_NAME = "peerhub_queue"
+BROKER_PEERHUB_EXCHANGE_NAME = "peerhub_exchange"
+
 
 class BrokerConfigForClient(b.BrokerConfigForClient):
-    pass
+    exchange_name: str = BROKER_PEERHUB_EXCHANGE_NAME
+    queue_name: str = BROKER_PEERHUB_QUEUE_NAME
 
 
-class BrokerConfigForWorker(b.BrokerConfigForWorker):
+class BrokerConfigForWorker(b.BrokerConfigForWorker, BrokerConfigForClient):
     peerhub_id: UUID
     queue_bind_arguments: dict[str, str] = {}
 
