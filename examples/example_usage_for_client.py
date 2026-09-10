@@ -12,7 +12,6 @@ broker = define_broker(
     BrokerConfigForClient(
         broker_url=AmqpDsn("amqp://user:password@localhost:5672"),
         result_backend_url=RedisDsn("redis://localhost:6379/0"),
-        exchange_name="exchange_name",
     )
 )
 _ = broker.startup()
