@@ -1,9 +1,9 @@
-__all__ = ["define_task", "get_declare_task_wrapper", "send_task"]
-
+from dataclasses import dataclass
 from types import CoroutineType
 from typing import Callable, ParamSpec, TypeVar
 
 from taskiq import AsyncTaskiqDecoratedTask
+from taskiq.kicker import AsyncKicker
 from taskiq_aio_pika import AioPikaBroker
 
 from shiro.util.telemetry import observe
@@ -53,38 +53,54 @@ def define_task(
     """
 
     def wrapper(func: Callable[PD, CoroutineType[object, object, T]]):
-        func = observe(task.task_name)(func)
-        new_task = task.broker.register_task(func, task.task_name)
+        observed_func = observe(task.task_name)(func)
+        new_task = task.broker.register_task(observed_func, task.task_name)
         return new_task
 
     return wrapper
 
 
-def send_task(
-    task: AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]],
-    *,
-    wait_result_check_interval: float = 0.01,
-    wait_result_timeout: float = 1,
-):
-    """
-    - kiq task and wait for result.
-    - OpenTelemetryMiddleware adds trace for `kiq`.
-    - Adds trace for `wait_result`."""
+@dataclass(kw_only=True)
+class TaskSender[**P, T]:
+    task: (
+        AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]]
+        | AsyncKicker[P, CoroutineType[object, object, T]]
+    )
+    wait_result_check_interval: float
+    wait_result_timeout: float
 
-    async def inner(
+    async def send(
+        self,
         *task_args: P.args,
         **task_kwargs: P.kwargs,
     ) -> T:
-        kiqed_task = await task.kiq(*task_args, **task_kwargs)
-        observable_wait_result = observe(f"wait_result/{task.task_name}")(
+        kiqed_task = await self.task.kiq(*task_args, **task_kwargs)
+        observable_wait_result = observe(f"wait_result/{self.task.task_name}")(
             kiqed_task.wait_result
         )
         result = await observable_wait_result(
-            timeout=wait_result_timeout,
-            check_interval=wait_result_check_interval,
+            timeout=self.wait_result_timeout,
+            check_interval=self.wait_result_check_interval,
         )
         if result.error is not None:
             raise result.error
         return result.return_value
 
-    return inner
+
+@dataclass(kw_only=True)
+class TaskRunner:
+    wait_result_check_interval: float
+    wait_result_timeout: float
+
+    def runner(
+        self,
+        task: (
+            AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]]
+            | AsyncKicker[P, CoroutineType[object, object, T]]
+        ),
+    ):
+        return TaskSender(
+            task=task,
+            wait_result_check_interval=self.wait_result_check_interval,
+            wait_result_timeout=self.wait_result_timeout,
+        )

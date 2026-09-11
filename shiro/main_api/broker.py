@@ -9,7 +9,8 @@ from typing import TypeVar
 
 from taskiq_aio_pika import AioPikaBroker
 
-import shiro.util as b
+import shiro.util.broker as b
+import shiro.util.tasks as t
 
 BROKER_MAIN_API_QUEUE_NAME = "main_api_queue"
 BROKER_MAIN_API_EXCHANGE_NAME = "main_api_exchange"
@@ -57,5 +58,5 @@ def declare_task(task_name: str):
     ```
     """
     global _broker
-    wrapper = b.get_declare_task_wrapper(_broker, task_name)
+    wrapper = t.get_declare_task_wrapper(_broker, task_name)
     return wrapper

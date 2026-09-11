@@ -14,7 +14,8 @@ from taskiq import AsyncTaskiqDecoratedTask
 from taskiq.kicker import AsyncKicker
 from taskiq_aio_pika import AioPikaBroker
 
-import shiro.util as b
+import shiro.util.broker as b
+import shiro.util.tasks as t
 
 BROKER_PEERHUB_QUEUE_NAME = "peerhub_queue"
 BROKER_PEERHUB_EXCHANGE_NAME = "peerhub_exchange"
@@ -68,7 +69,7 @@ def declare_task(task_name: str):
     ```
     """
     global _broker
-    wrapper = b.get_declare_task_wrapper(_broker, task_name)
+    wrapper = t.get_declare_task_wrapper(_broker, task_name)
     return wrapper
 
 
