@@ -3,8 +3,11 @@ from typing import cast
 from aio_pika import ExchangeType
 from pamqp.common import FieldTable
 from pydantic import AmqpDsn, BaseModel, RedisDsn
+from taskiq.middlewares.opentelemetry_middleware import OpenTelemetryMiddleware
 from taskiq_aio_pika import AioPikaBroker, Exchange, Queue
 from taskiq_redis import RedisAsyncResultBackend
+
+from shiro.util.telemetry.otel_setup import require_state
 
 
 class BrokerConfigForClient(BaseModel):
@@ -21,6 +24,8 @@ class BrokerConfigForWorker(BrokerConfigForClient):
 def create_broker(
     config: BrokerConfigForClient | BrokerConfigForWorker,
 ) -> AioPikaBroker:
+    _ = require_state()  # needed by OpenTelemetryMiddleware
+
     broker = (
         AioPikaBroker(
             url=str(config.broker_url),
@@ -45,5 +50,6 @@ def create_broker(
         .with_result_backend(
             RedisAsyncResultBackend(str(config.result_backend_url))
         )
+        .with_middlewares(OpenTelemetryMiddleware())
     )
     return broker

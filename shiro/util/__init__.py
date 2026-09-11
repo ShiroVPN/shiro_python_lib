@@ -1,5 +1,5 @@
 from .broker import BrokerConfigForClient, BrokerConfigForWorker, create_broker
-from .tasks import define_task, get_declare_task_wrapper
+from .tasks import define_task, get_declare_task_wrapper, send_task
 
 __all__ = [
     "BrokerConfigForWorker",
@@ -7,4 +7,5 @@ __all__ = [
     "create_broker",
     "define_task",
     "get_declare_task_wrapper",
+    "send_task",
 ]

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shiro"
-version = "0.0.10"
+version = "0.0.11"
 description = "shiro python library"
 authors = ["AndrewCh <andrey.chikin1223@gmail.com>"]
 license = "MIT"
@@ -11,10 +11,16 @@ repository = "https://github.com/ShiroVPN/shiro_python_lib"
 python = "^3.14"
 uuid = "^1.30"
 pydantic = "^2.13.4"
-taskiq = "^0.12.5"
+taskiq = {extras = ["opentelemetry"], version = "^0.12.6"}
 taskiq-aio-pika = "^0.6.0"
 taskiq-redis = "^1.2.3"
 heliclockter = "^3.0.1"
+opentelemetry-api = "^1.44.0"
+opentelemetry-sdk = "^1.44.0"
+opentelemetry-exporter-otlp = "^1.44.0"
+opentelemetry-exporter-prometheus = "^0.65b0"
+opentelemetry-instrumentation-logging = "^0.65b0"
+prometheus-client = "^0.26.0"
 
 [tool.poetry.group.dev.dependencies]
 basedpyright = "^1.39.10"
