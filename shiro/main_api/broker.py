@@ -18,10 +18,10 @@ BROKER_MAIN_API_EXCHANGE_NAME = "main_api_exchange"
 
 class BrokerConfigForClient(b.BrokerConfigForClient):
     exchange_name: str = BROKER_MAIN_API_EXCHANGE_NAME
-    queue_name: str = BROKER_MAIN_API_QUEUE_NAME
 
 
 class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
+    queue_name: str = BROKER_MAIN_API_QUEUE_NAME
     queue_bind_arguments: dict[str, str] = {}
 
 

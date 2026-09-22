@@ -97,6 +97,7 @@ def _observe_call(
     func: Callable[..., object],
     args: tuple[object, ...],
     kwargs: dict[str, object],
+    log_values: bool,
 ) -> Generator[ReturnValue]:
     time_wrapper_start = time.perf_counter()
     tracer = get_tracer(__name__)
@@ -104,8 +105,16 @@ def _observe_call(
     with tracer.start_as_current_span(call_id) as span:
         trace_id = format_trace_id(span.get_span_context().trace_id)
         logger = get_logger(__name__)
-        args_str = ", ".join(
-            [str(v) for v in args] + [f"{k}={v}" for k, v in kwargs.items()]
+        # Values are opt-in: task results include WireGuard client configs
+        # with private keys, and these records leave the process (stdout,
+        # OTLP collector).
+        args_str = (
+            ", ".join(
+                [str(v) for v in args]
+                + [f"{k}={v}" for k, v in kwargs.items()]
+            )
+            if log_values
+            else "..."
         )
         logger.info(
             f"function_call: {call_id}({args_str})",
@@ -113,8 +122,8 @@ def _observe_call(
                 call_id=call_id,
                 func_name=func.__name__,
                 trace_id=trace_id,
-                call_args=args,
-                call_kwargs=kwargs,
+                call_args=args if log_values else (),
+                call_kwargs=kwargs if log_values else {},
             ).model_dump(mode="json"),
         )
 
@@ -135,17 +144,23 @@ def _observe_call(
         time_func_execution_ms = time_ms(time_func_call_start)
         span.set_status(status)
 
-        get_duration_histogram().record(
-            time_func_execution_ms, {"call_id": call_id}
-        )
+        histogram = get_duration_histogram()
+        if histogram is not None:
+            histogram.record(time_func_execution_ms, {"call_id": call_id})
 
+        if error is not None:
+            result_str = str(error)
+        elif log_values:
+            result_str = str(result)
+        else:
+            result_str = "ok"
         logger.info(
-            f"function_return: {call_id}({args_str}) -> {result if error is None else error}",
+            f"function_return: {call_id}({args_str}) -> {result_str}",
             extra=LogFunctionReturn(
                 call_id=call_id,
                 func_name=func.__name__,
                 trace_id=trace_id,
-                return_value=return_value,
+                return_value=return_value if log_values else ReturnValue(),
                 is_error=error is not None,
                 error=error if error else None,
                 time_elapsed_ms=time_ms(time_wrapper_start),
@@ -157,7 +172,14 @@ def _observe_call(
             raise error
 
 
-def observe(call_id: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def observe(
+    call_id: str, log_values: bool = False
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Span, call/return log records and a duration metric for a function.
+
+    `log_values=True` also records arguments and the return value. Keep it
+    off for anything that handles secrets.
+    """
 
     @overload
     def inner(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]: ...
@@ -173,7 +195,7 @@ def observe(call_id: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
 
             @wraps(func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-                with _observe_call(call_id, func, args, kwargs) as rv:
+                with _observe_call(call_id, func, args, kwargs, log_values) as rv:
                     value = await func(*args, **kwargs)
                     rv.value = value
                     return value
@@ -184,7 +206,7 @@ def observe(call_id: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
 
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            with _observe_call(call_id, func, args, kwargs) as rv:
+            with _observe_call(call_id, func, args, kwargs, log_values) as rv:
                 value = func(*args, **kwargs)
                 rv.value = value
                 return value
@@ -195,12 +217,12 @@ def observe(call_id: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
 
 
 def observe_decorator_with_prefix(
-    prefix: str = "", sep: str = "."
+    prefix: str = "", sep: str = ".", log_values: bool = False
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         call_id = func.__name__
         if prefix:
             call_id = f"{prefix}{sep}{call_id}"
-        return observe(call_id)(func)
+        return observe(call_id, log_values)(func)
 
     return decorator

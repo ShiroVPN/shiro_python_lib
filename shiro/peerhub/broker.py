@@ -23,15 +23,19 @@ BROKER_PEERHUB_EXCHANGE_NAME = "peerhub_exchange"
 
 class BrokerConfigForClient(b.BrokerConfigForClient):
     exchange_name: str = BROKER_PEERHUB_EXCHANGE_NAME
-    queue_name: str = BROKER_PEERHUB_QUEUE_NAME
 
 
 class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
     peerhub_id: UUID
+    # One queue per peerhub. A shared queue with per-hub bindings would let
+    # any worker consume tasks addressed to another hub.
+    queue_name: str = ""
     queue_bind_arguments: dict[str, str] = {}
 
     @model_validator(mode="after")
-    def set_queue_bind_arguments(self) -> "BrokerConfigForWorker":
+    def set_queue_for_peerhub(self) -> "BrokerConfigForWorker":
+        if not self.queue_name:
+            self.queue_name = f"{BROKER_PEERHUB_QUEUE_NAME}.{self.peerhub_id}"
         self.queue_bind_arguments = {"peerhub_id": str(self.peerhub_id)}
         return self
 

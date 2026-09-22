@@ -13,7 +13,7 @@ Broker configs:
 | Name                    | Fields                                                       |
 | ----------------------- | ------------------------------------------------------------ |
 | `BrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` |
-| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `queue_name: str`<br/>+ `peerhub_id: UUID` (to route to `peerhub`) |
+| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `peerhub_id: UUID` (to route to `peerhub`)<br/>+ `queue_name: str`, default `peerhub_queue.<peerhub_id>` — one queue per peerhub |
 
 IMPORTANT: call `.broker.define_broker` before importing `.tasks`.
 

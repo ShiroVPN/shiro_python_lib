@@ -21,14 +21,14 @@ env_config = EnvConfig(
     otel_service_name="broker_client",
 )
 
-set_up_otel(
-    OtelConfig(
-        otel_collector_endpoint=env_config.otel_collector_endpoint,
-        otel_service_name=env_config.otel_service_name,
+# Optional: without it the tracer and meter are no-ops.
+if env_config.otel_collector_endpoint is not None:
+    set_up_otel(
+        OtelConfig(
+            otel_collector_endpoint=env_config.otel_collector_endpoint,
+            otel_service_name=env_config.otel_service_name,
+        )
     )
-)
-
-# `set_up_otel` before `define_broker`.
 
 broker = define_broker(
     BrokerConfigForWorker(
