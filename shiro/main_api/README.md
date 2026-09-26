@@ -14,7 +14,7 @@ Broker configs:
 | Name                    | Fields                                                       |
 | ----------------------- | ------------------------------------------------------------ |
 | `BrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` |
-| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `queue_name: str`              |
+| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `queue_name: str` (default `main_api_queue`) |
 
 IMPORTANT: call `.broker.define_broker` before importing `.tasks`.
 

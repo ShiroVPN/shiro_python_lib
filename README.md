@@ -7,6 +7,40 @@ This module defines TaskIQ tasks for workers `peerhub` and `main_api`. For more 
 
 It also has useful functions for defining brokers and tasks.
 
+# Brokers and queues
+
+- `main_api`: HEADERS exchange `main_api_exchange`, worker queue `main_api_queue`.
+- `peerhub`: HEADERS exchange `peerhub_exchange`, **one queue per peerhub** — `peerhub_queue.<PEERHUB_ID>`,
+  bound with `peerhub_id=<PEERHUB_ID>`; clients route with `route_task_to_peerhub`.
+- Clients get their own queue `<exchange>.client`, bound with a header no message carries, so a client
+  starts fine before any worker has declared its queue.
+- Task results live in Redis for `result_ex_time_s` (default 3600 s).
+
+Telemetry is optional: call `set_up_otel(...)` to export traces, metrics and logs over OTLP; without
+it the tracer and meter are no-ops. `observe()` records call/return events and
+durations but **not** argument or return values unless `log_values=True` — task results include
+WireGuard configs with private keys.
+
+## Upgrading from 0.1.x
+
+Peerhub workers move from the shared `peerhub_queue` to `peerhub_queue.<PEERHUB_ID>`. On a RabbitMQ that
+ran the old chain, in this order:
+
+1. Upgrade `main_api_worker` (and every other peerhub *client*) to 0.2.0 first. Old clients require the
+   old `peerhub_queue` to exist at startup; new ones do not.
+2. Per hub: stop the old worker, then start the new one. Never run both for one hub: a headers exchange
+   delivers each message to every matching queue, so the task would execute twice.
+3. Delete the old queue, otherwise it keeps a copy of every peerhub message with nobody consuming:
+   `rabbitmqctl delete_queue peerhub_queue`. Check for other stale bindings with
+   `rabbitmqctl list_bindings source_name destination_name arguments | grep peerhub_exchange`
+   — every destination must be a running hub's `peerhub_queue.<PEERHUB_ID>` or `peerhub_exchange.client`.
+4. Results written by 0.1.x workers have no TTL. Once every worker is on 0.2.0, clear them:
+   `redis-cli FLUSHDB` on the result database (nothing else lives there).
+
+API changes: `queue_name` is no longer a client config field; `OTEL_COLLECTOR_ENDPOINT` is optional and
+`OTEL_SERVICE_NAME` defaults to `shiro`; the `BROKER_RESULT_BACKEND_URL` error text names the variable;
+`from shiro.util import define_task` (removed in 0.1.0) is `shiro.util.tasks.define_task`.
+
 # Usage example on client
 
 ```python
@@ -36,14 +70,14 @@ env_config = MyEnvConfig(
     otel_service_name="broker_client",
 )
 
-set_up_otel(
-    OtelConfig(
-        otel_collector_endpoint=env_config.otel_collector_endpoint,
-        otel_service_name=env_config.otel_service_name,
+# Optional: without it the tracer and meter are no-ops.
+if env_config.otel_collector_endpoint is not None:
+    set_up_otel(
+        OtelConfig(
+            otel_collector_endpoint=env_config.otel_collector_endpoint,
+            otel_service_name=env_config.otel_service_name,
+        )
     )
-)
-
-# `set_up_otel` before `define_broker`.
 
 broker = define_broker(
     BrokerConfigForClient(
@@ -109,14 +143,14 @@ env_config = EnvConfig(
     otel_service_name="broker_client",
 )
 
-set_up_otel(
-    OtelConfig(
-        otel_collector_endpoint=env_config.otel_collector_endpoint,
-        otel_service_name=env_config.otel_service_name,
+# Optional: without it the tracer and meter are no-ops.
+if env_config.otel_collector_endpoint is not None:
+    set_up_otel(
+        OtelConfig(
+            otel_collector_endpoint=env_config.otel_collector_endpoint,
+            otel_service_name=env_config.otel_service_name,
+        )
     )
-)
-
-# `set_up_otel` before `define_broker`.
 
 broker = define_broker(
     BrokerConfigForWorker(

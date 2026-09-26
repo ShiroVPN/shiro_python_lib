@@ -28,12 +28,15 @@ class BaseEnvConfig(BaseSettings):
 
 class BrokerEnvConfig(BaseEnvConfig):
     broker_url: AmqpDsn = required_field("broker_url")
-    broker_result_backend_url: RedisDsn = required_field("backend_url")
+    broker_result_backend_url: RedisDsn = required_field(
+        "broker_result_backend_url"
+    )
 
 
 class OtelEnvConfig(BaseEnvConfig):
-    otel_collector_endpoint: HttpUrl = required_field("otel_collector_endpoint")
-    otel_service_name: str = required_field("otel_service_name")
+    # Unset = telemetry off (see shiro.util.telemetry.otel_setup.is_set_up).
+    otel_collector_endpoint: HttpUrl | None = None
+    otel_service_name: str = "shiro"
 
 
 class EnvConfig(BrokerEnvConfig, OtelEnvConfig):

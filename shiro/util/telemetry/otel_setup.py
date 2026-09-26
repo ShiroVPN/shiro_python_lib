@@ -74,28 +74,23 @@ def set_up_otel(otel_config: OtelConfig):
     _state = _OtelState(duration_histogram=duration_histogram)
 
 
-def require_state() -> _OtelState:
-    if _state is None:
-        raise RuntimeError("""OTEL is not set up. Call \
-            `telemetry.set_up_otel(OtelConfig(...))` first, \
-            like you do with `define_broker`.""")
-    return _state
+def is_set_up() -> bool:
+    """Telemetry is optional: without set_up_otel() the tracer and meter
+    below are the SDK's no-op defaults and nothing is exported."""
+    return _state is not None
 
 
 def get_logger(name: str) -> logging.Logger:
-    _ = require_state()
     return logging.getLogger(name)
 
 
 def get_tracer(name: str) -> trace.Tracer:
-    _ = require_state()
     return trace.get_tracer(name)
 
 
 def get_meter(name: str) -> metrics.Meter:
-    _ = require_state()
     return metrics.get_meter(name)
 
 
-def get_duration_histogram() -> metrics.Histogram:
-    return require_state().duration_histogram
+def get_duration_histogram() -> metrics.Histogram | None:
+    return _state.duration_histogram if _state is not None else None
