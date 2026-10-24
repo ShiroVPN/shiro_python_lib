@@ -37,7 +37,9 @@ class ClientGet(BaseModel):
 
 
 class ClientPost(ClientGet):
-    pass
+    # Who invited the client (from the bot's deep link). The worker silently
+    # drops an unknown or self referrer, so the client is created anyway.
+    referrer_telegram_id: int | None = Field(default=None, ge=0, lt=2**63)
 
 
 class TransactionPost(ClientGet):
