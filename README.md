@@ -21,6 +21,15 @@ it the tracer and meter are no-ops. `observe()` records call/return events and
 durations but **not** argument or return values unless `log_values=True` — task results include
 WireGuard configs with private keys.
 
+## Upgrading from 0.3.x
+
+`peerhub.get_config` now answers `WgConfig | XuiConfig` instead of a plain
+string: a wg-easy peerhub returns `{config}` (the `.conf` body), a 3x-ui one
+`{sub_url}` (the subscription URL). `main_api.get_connection_config` passes the
+same union through, so a reader that used to expect a string must validate the
+shape it got. Taskiq sends the result as JSON primitives, so validate the dict,
+not a shared class.
+
 ## Upgrading from 0.1.x
 
 Peerhub workers move from the shared `peerhub_queue` to `peerhub_queue.<PEERHUB_ID>`. On a RabbitMQ that

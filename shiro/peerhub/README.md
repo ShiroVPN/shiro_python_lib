@@ -23,24 +23,32 @@ To route task to `peerhub` use `.broker.route_task_to_peerhub(task, peerhub_id: 
 
 Module: `.models`
 
-| Name      | Fields                                         |
-| --------- | ---------------------------------------------- |
-| `Peer`    | `id: UUID`<br/>`name: str`<br/>`enabled: bool` |
-| `PeerAdd` | `name: str`<br/>`id: UUID`                     |
-| `Success` | `ok: bool = True`                              |
+| Name        | Fields                                         |
+| ----------- | ---------------------------------------------- |
+| `Peer`      | `id: UUID`<br/>`name: str`<br/>`enabled: bool` |
+| `PeerAdd`   | `name: str`<br/>`id: UUID`                     |
+| `Success`   | `ok: bool = True`                              |
+| `WgConfig`  | `config: str`                                  |
+| `XuiConfig` | `sub_url: str`                                 |
+
+Two kinds of peerhub answer `peerhub.get_config` with a different artifact: a
+wg-easy node with the `.conf` body, a 3x-ui node with the subscription URL.
+These models are never shared by reference: taskiq dumps a result to JSON-safe
+primitives before pickling it, so a reader validates `{"config": ...}` or
+`{"sub_url": ...}` into whichever model it needs.
 
 # Tasks
 
 Module: `.tasks`
 
-| Name                   | Input     | Output    |
-| ---------------------- | --------- | --------- |
-| `peerhub.get_peer`     | `UUID`    | `Peer`    |
-| `peerhub.add_peer`     | `PeerAdd` | `Peer`    |
-| `peerhub.enable_peer`  | `UUID`    | `Success` |
-| `peerhub.disable_peer` | `UUID`    | `Success` |
-| `peerhub.delete_peer`  | `UUID`    | `Success` |
-| `peerhub.get_config`   | `UUID`    | `str`     |
+| Name                   | Input     | Output                  |
+| ---------------------- | --------- | ----------------------- |
+| `peerhub.get_peer`     | `UUID`    | `Peer`                  |
+| `peerhub.add_peer`     | `PeerAdd` | `Peer`                  |
+| `peerhub.enable_peer`  | `UUID`    | `Success`               |
+| `peerhub.disable_peer` | `UUID`    | `Success`               |
+| `peerhub.delete_peer`  | `UUID`    | `Success`               |
+| `peerhub.get_config`   | `UUID`    | `WgConfig \| XuiConfig` |
 
 # Exceptions
 

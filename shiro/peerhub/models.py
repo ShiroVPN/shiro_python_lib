@@ -2,6 +2,8 @@ __all__ = [
     "Peer",
     "PeerAdd",
     "Success",
+    "WgConfig",
+    "XuiConfig",
 ]
 
 from uuid import UUID
@@ -22,3 +24,15 @@ class Peer(BaseModel):
 
 class Success(BaseModel):
     ok: bool = True
+
+
+class WgConfig(BaseModel):
+    """`peerhub.get_config` answered by a wg-easy peerhub: `.conf` body."""
+
+    config: str
+
+
+class XuiConfig(BaseModel):
+    """`peerhub.get_config` answered by a 3x-ui peerhub: subscription URL."""
+
+    sub_url: str

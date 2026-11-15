@@ -15,6 +15,8 @@ __all__ = [
     "update_peerhub_heartbeat",
 ]
 
+from shiro.peerhub.models import WgConfig, XuiConfig
+
 from . import models as m
 from .broker import declare_task
 
@@ -74,7 +76,7 @@ async def update_subscription(
 @declare_task(task_name="main_api.get_connection_config")
 async def get_connection_config(
     client_data: m.ClientGet,
-) -> str: ...
+) -> WgConfig | XuiConfig: ...
 
 
 @declare_task(task_name="main_api.notify_client")

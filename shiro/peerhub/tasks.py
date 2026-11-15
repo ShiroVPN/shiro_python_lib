@@ -12,7 +12,7 @@ __all__ = [
 from uuid import UUID
 
 from .broker import declare_task
-from .models import Peer, PeerAdd, Success
+from .models import Peer, PeerAdd, Success, WgConfig, XuiConfig
 
 
 @declare_task(task_name="peerhub.get_peer")
@@ -36,4 +36,4 @@ async def delete_peer(id: UUID) -> Success: ...
 
 
 @declare_task(task_name="peerhub.get_config")
-async def get_config(id: UUID) -> str: ...
+async def get_config(id: UUID) -> WgConfig | XuiConfig: ...
