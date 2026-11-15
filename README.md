@@ -1,17 +1,21 @@
 # Shiro python module
 
-This module defines TaskIQ tasks for workers `peerhub` and `main_api`. For more information see README files:
+This module defines TaskIQ tasks for workers `peerhub` and `main_api`, and the notifications a service sends to the Telegram bot. For more information see README files:
 
 - [main_api](shiro/main_api/README.md)
 - [peerhub](shiro/peerhub/README.md)
+- [telegram_bot](shiro/telegram_bot/README.md)
 
-It also has useful functions for defining brokers and tasks.
+It also has useful functions for defining brokers and tasks, and the shared pydantic types in `shiro.util.types` — `TelegramID`, `TelegramUsername` and `Money`.
 
 # Brokers and queues
 
 - `main_api`: HEADERS exchange `main_api_exchange`, worker queue `main_api_queue`.
 - `peerhub`: HEADERS exchange `peerhub_exchange`, **one queue per peerhub** — `peerhub_queue.<PEERHUB_ID>`,
   bound with `peerhub_id=<PEERHUB_ID>`; clients route with `route_task_to_peerhub`.
+- `telegram_bot`: TOPIC exchange `telegram_bot_exchange`, queue `telegram_bot_queue` — the bot consumes it
+  in its own process, every service that notifies the bot only publishes. Messages are fire-and-forget:
+  the broker has no result backend.
 - Clients get their own queue `<exchange>.client`, bound with a header no message carries, so a client
   starts fine before any worker has declared its queue.
 - Task results live in Redis for `result_ex_time_s` (default 3600 s).
