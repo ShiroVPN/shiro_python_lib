@@ -23,13 +23,14 @@ To route task to `peerhub` use `.broker.route_task_to_peerhub(task, peerhub_id: 
 
 Module: `.models`
 
-| Name        | Fields                                         |
-| ----------- | ---------------------------------------------- |
-| `Peer`      | `id: UUID`<br/>`name: str`<br/>`enabled: bool` |
-| `PeerAdd`   | `name: str`<br/>`id: UUID`                     |
-| `Success`   | `ok: bool = True`                              |
-| `WgConfig`  | `config: str`                                  |
-| `XuiConfig` | `sub_url: str`                                 |
+| Name        | Fields                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `Peer`      | `id: UUID`<br/>`name: str`<br/>`enabled: bool`                                                                                 |
+| `PeerAdd`   | `name: str`<br/>`id: UUID`                                                                                                     |
+| `PeerUsage` | `id: UUID`<br/>`enabled: bool`<br/>`rx: int` ($\ge 0$)<br/>`tx: int` ($\ge 0$)<br/>`latest_handshake_at: datetime_utc \| None` |
+| `Success`   | `ok: bool = True`                                                                                                              |
+| `WgConfig`  | `config: str`                                                                                                                  |
+| `XuiConfig` | `sub_url: str`                                                                                                                 |
 
 Two kinds of peerhub answer `peerhub.get_config` with a different artifact: a
 wg-easy node with the `.conf` body, a 3x-ui node with the subscription URL.
@@ -49,6 +50,9 @@ Module: `.tasks`
 | `peerhub.disable_peer` | `UUID`    | `Success`               |
 | `peerhub.delete_peer`  | `UUID`    | `Success`               |
 | `peerhub.get_config`   | `UUID`    | `WgConfig \| XuiConfig` |
+| `peerhub.get_usage`    | (none)    | `list[PeerUsage]`       |
+
+`peerhub.get_usage` reports the node's live counters, not a history: a node restart resets them, a disabled peer is absent from a wg-easy answer while 3x-ui keeps reporting its last traffic, and `latest_handshake_at` is `None` until the peer's first connection.
 
 # Exceptions
 
