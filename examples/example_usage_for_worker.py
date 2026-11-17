@@ -4,8 +4,8 @@ from pydantic import AmqpDsn, HttpUrl, RedisDsn
 from taskiq import TaskiqDepends
 
 from shiro.main_api.broker import (
-    BrokerConfigForWorker,
-    define_broker,
+    MainApiBrokerConfigForWorker,
+    define_main_api_broker_as_worker,
 )
 from shiro.util.env import EnvConfig
 from shiro.util.telemetry import (
@@ -30,14 +30,14 @@ if env_config.otel_collector_endpoint is not None:
         )
     )
 
-broker = define_broker(
-    BrokerConfigForWorker(
+broker = define_main_api_broker_as_worker(
+    MainApiBrokerConfigForWorker(
         broker_url=env_config.broker_url,
         result_backend_url=env_config.broker_result_backend_url,
     )
 )
 
-# import tasks after `define_broker` was called
+# import tasks after `define_main_api_broker_as_worker` was called
 
 
 from shiro.main_api.models import Client, ClientGet

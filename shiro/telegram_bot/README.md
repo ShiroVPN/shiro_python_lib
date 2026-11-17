@@ -14,7 +14,7 @@ Broker config:
 | ------------------------- | ----------------- |
 | `TelegramBotBrokerConfig` | `broker_url: AmqpDsn` |
 
-IMPORTANT: call `.broker.define_broker` before importing `.tasks`.
+IMPORTANT: call `.broker.define_telegram_bot_broker_as_client` in a service that notifies the bot, or `.broker.define_telegram_bot_broker_as_worker` in the bot itself, before importing `.tasks`. Both build the same TOPIC broker and queue; the name says which side of the queue the process is.
 
 Both sides declare `telegram_bot_exchange` and `telegram_bot_queue`, so neither has to start first: a message waits until the bot consumes it. There is no result backend — a notification is fire-and-forget, the sender does not wait for an answer.
 

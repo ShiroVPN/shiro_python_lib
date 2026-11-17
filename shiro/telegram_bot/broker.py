@@ -2,7 +2,8 @@ __all__ = [
     "BROKER_TELEGRAM_BOT_QUEUE_NAME",
     "BROKER_TELEGRAM_BOT_EXCHANGE_NAME",
     "TelegramBotBrokerConfig",
-    "define_broker",
+    "define_telegram_bot_broker_as_client",
+    "define_telegram_bot_broker_as_worker",
     "declare_task",
 ]
 
@@ -25,19 +26,39 @@ class TelegramBotBrokerConfig(BaseModel):
 _broker: AioPikaBroker | None = None
 
 
-def define_broker(config: TelegramBotBrokerConfig) -> AioPikaBroker:
-    """
-    Function: `shiro.telegram_bot.broker.define_broker`.
-    Call this function before importing `shiro.telegram_bot.tasks`.
-    The bot and every service that notifies it declare the same queue, so
-    neither side has to start first: messages wait for the bot to consume
-    them.
-    """
-    global _broker
-    _broker = AioPikaBroker(
+def _create_broker(config: TelegramBotBrokerConfig) -> AioPikaBroker:
+    # The bot and every service that notifies it declare the same queue, so
+    # neither side has to start first: messages wait for the bot to consume
+    # them.
+    return AioPikaBroker(
         url=str(config.broker_url),
         exchange=Exchange(name=BROKER_TELEGRAM_BOT_EXCHANGE_NAME),
     ).with_queue(Queue(name=BROKER_TELEGRAM_BOT_QUEUE_NAME))
+
+
+def define_telegram_bot_broker_as_client(
+    config: TelegramBotBrokerConfig,
+) -> AioPikaBroker:
+    """
+    Function: `shiro.telegram_bot.broker.define_telegram_bot_broker_as_client`.
+    Call this function before importing `shiro.telegram_bot.tasks`.
+    Use it in a service that only kicks notifications.
+    """
+    global _broker
+    _broker = _create_broker(config)
+    return _broker
+
+
+def define_telegram_bot_broker_as_worker(
+    config: TelegramBotBrokerConfig,
+) -> AioPikaBroker:
+    """
+    Function: `shiro.telegram_bot.broker.define_telegram_bot_broker_as_worker`.
+    Call this function before importing `shiro.telegram_bot.tasks`.
+    Use it in the bot, which consumes the queue in its own process.
+    """
+    global _broker
+    _broker = _create_broker(config)
     return _broker
 
 

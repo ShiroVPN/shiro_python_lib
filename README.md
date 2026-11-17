@@ -25,6 +25,30 @@ it the tracer and meter are no-ops. `observe()` records call/return events and
 durations but **not** argument or return values unless `log_values=True` — task results include
 WireGuard configs with private keys.
 
+## Upgrading from 0.5.x
+
+Broker entry points are named after the service they belong to and split by the role the process plays.
+The configurations keep their shape; what changes is the import and which builder the process calls.
+
+| 0.5.x | 0.6.0 |
+| --- | --- |
+| `shiro.main_api.broker.BrokerConfigForClient` / `define_broker` | `MainApiBrokerConfigForClient` / `define_main_api_broker_as_client` |
+| `shiro.main_api.broker.BrokerConfigForWorker` / `define_broker` | `MainApiBrokerConfigForWorker` / `define_main_api_broker_as_worker` |
+| `shiro.peerhub.broker.BrokerConfigForClient` / `define_broker` | `PeerhubBrokerConfigForClient` / `define_peerhub_broker_as_client` |
+| `shiro.peerhub.broker.BrokerConfigForWorker` / `define_broker` | `PeerhubBrokerConfigForWorker` / `define_peerhub_broker_as_worker` |
+| `shiro.telegram_bot.broker.define_broker` — a service that notifies the bot | `define_telegram_bot_broker_as_client` |
+| `shiro.telegram_bot.broker.define_broker` — the bot itself | `define_telegram_bot_broker_as_worker` |
+
+`_as_client` declares the exchange and its own `<exchange>.client` queue, which nothing routes into: the
+process only kicks tasks and never consumes. `_as_worker` declares the queue the process consumes. Both go
+through `shiro.util.broker.create_broker`, which picks the queue from the config, so the name says which
+role the process plays — and which config type it may pass.
+
+`TelegramBotBrokerConfig`, `route_task_to_peerhub`, `declare_task` and `define_task` keep their names, and
+`shiro.util.broker` keeps the generic `BrokerConfigForClient` / `BrokerConfigForWorker` and `create_broker`.
+Exchanges, queue names, bindings and routing are untouched, so 0.5.x and 0.6.0 workers talk to each other
+while a fleet is being upgraded.
+
 ## Upgrading from 0.3.x
 
 `peerhub.get_config` now answers `WgConfig | XuiConfig` instead of a plain
@@ -62,8 +86,8 @@ from uuid import uuid4
 from pydantic import AmqpDsn, HttpUrl, RedisDsn
 
 from shiro.peerhub.broker import (
-    BrokerConfigForClient,
-    define_broker,
+    PeerhubBrokerConfigForClient,
+    define_peerhub_broker,
     route_task_to_peerhub,
 )
 from shiro.util.env import EnvConfig
@@ -92,8 +116,8 @@ if env_config.otel_collector_endpoint is not None:
         )
     )
 
-broker = define_broker(
-    BrokerConfigForClient(
+broker = define_peerhub_broker(
+    PeerhubBrokerConfigForClient(
         broker_url=env_config.broker_url,
         result_backend_url=env_config.broker_result_backend_url,
     )
@@ -101,7 +125,7 @@ broker = define_broker(
 
 _ = broker.startup()
 
-# import tasks after define_broker was called
+# import tasks after define_peerhub_broker was called
 # kiq tasks after broker startup
 
 from shiro.peerhub.models import Peer
@@ -139,8 +163,8 @@ from pydantic import AmqpDsn, HttpUrl, RedisDsn
 from taskiq import TaskiqDepends
 
 from shiro.main_api.broker import (
-    BrokerConfigForWorker,
-    define_broker,
+    MainApiBrokerConfigForWorker,
+    define_main_api_broker,
 )
 from shiro.util.env import EnvConfig
 from shiro.util.telemetry import (
@@ -165,14 +189,14 @@ if env_config.otel_collector_endpoint is not None:
         )
     )
 
-broker = define_broker(
-    BrokerConfigForWorker(
+broker = define_main_api_broker(
+    MainApiBrokerConfigForWorker(
         broker_url=env_config.broker_url,
         result_backend_url=env_config.broker_result_backend_url,
     )
 )
 
-# import tasks after `define_broker` was called
+# import tasks after `define_main_api_broker` was called
 
 
 from shiro.main_api.models import Client, ClientGet

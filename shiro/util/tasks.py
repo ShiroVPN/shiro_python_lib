@@ -18,7 +18,8 @@ def get_declare_task_wrapper(broker: AioPikaBroker | None, task_name: str):
         if broker is None:
             raise RuntimeError(f"""[{task_name}]: \
                 You can not declare tasks before setting up broker. \
-                Use 'define_broker'.""")
+                Call a `define_*_broker_as_client` or a \
+                `define_*_broker_as_worker` function first.""")
         new_task = broker.register_task(func, task_name)
         return new_task
 
@@ -35,10 +36,10 @@ def define_task(
 
     ```python
     from shiro.peerhub.broker import (
-        BrokerConfigForWorker,
-        define_broker,
+        PeerhubBrokerConfigForWorker,
+        define_peerhub_broker_as_worker,
     )
-    broker = define_broker(BrokerConfigForWorker(...))
+    broker = define_peerhub_broker_as_worker(PeerhubBrokerConfigForWorker(...))
 
     from shiro.peerhub.workers import get_peer
     from shiro.peerhub.models import Peer

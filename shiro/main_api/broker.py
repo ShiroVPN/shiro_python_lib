@@ -1,7 +1,8 @@
 __all__ = [
-    "BrokerConfigForClient",
-    "BrokerConfigForWorker",
-    "define_broker",
+    "MainApiBrokerConfigForClient",
+    "MainApiBrokerConfigForWorker",
+    "define_main_api_broker_as_client",
+    "define_main_api_broker_as_worker",
 ]
 
 
@@ -16,11 +17,13 @@ BROKER_MAIN_API_QUEUE_NAME = "main_api_queue"
 BROKER_MAIN_API_EXCHANGE_NAME = "main_api_exchange"
 
 
-class BrokerConfigForClient(b.BrokerConfigForClient):
+class MainApiBrokerConfigForClient(b.BrokerConfigForClient):
     exchange_name: str = BROKER_MAIN_API_EXCHANGE_NAME
 
 
-class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
+class MainApiBrokerConfigForWorker(
+    MainApiBrokerConfigForClient, b.BrokerConfigForWorker
+):
     queue_name: str = BROKER_MAIN_API_QUEUE_NAME
     queue_bind_arguments: dict[str, str] = {}
 
@@ -28,16 +31,29 @@ class BrokerConfigForWorker(BrokerConfigForClient, b.BrokerConfigForWorker):
 _broker: AioPikaBroker | None = None
 
 
-def define_broker(
-    config: BrokerConfigForClient | BrokerConfigForWorker,
+def define_main_api_broker_as_client(
+    config: MainApiBrokerConfigForClient,
 ) -> AioPikaBroker:
     """
-    Function: `shiro.main_api.broker.define_broker`.
-    Call this function before importing `shiro.main_api.workers`.
+    Function: `shiro.main_api.broker.define_main_api_broker_as_client`.
+    Call this function before importing `shiro.main_api.tasks`.
+    Use it in a service that only kicks `main_api` tasks.
     """
     global _broker
-    value = b.create_broker(config)
-    _broker = value
+    _broker = b.create_broker(config)
+    return _broker
+
+
+def define_main_api_broker_as_worker(
+    config: MainApiBrokerConfigForWorker,
+) -> AioPikaBroker:
+    """
+    Function: `shiro.main_api.broker.define_main_api_broker_as_worker`.
+    Call this function before importing `shiro.main_api.tasks`.
+    Use it in the process that consumes `main_api_queue`.
+    """
+    global _broker
+    _broker = b.create_broker(config)
     return _broker
 
 

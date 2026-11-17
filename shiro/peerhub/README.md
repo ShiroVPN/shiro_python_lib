@@ -10,12 +10,12 @@ Module: `.broker`.
 
 Broker configs:
 
-| Name                    | Fields                                                       |
-| ----------------------- | ------------------------------------------------------------ |
-| `BrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` |
-| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `peerhub_id: UUID` (to route to `peerhub`)<br/>+ `queue_name: str`, default `peerhub_queue.<peerhub_id>` — one queue per peerhub |
+| Name                           | Fields                                                       |
+| ------------------------------ | ------------------------------------------------------------ |
+| `PeerhubBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `peerhub_exchange`) |
+| `PeerhubBrokerConfigForWorker` | `PeerhubBrokerConfigForClient`<br/>+ `peerhub_id: UUID` (to route to `peerhub`)<br/>+ `queue_name: str`, default `peerhub_queue.<peerhub_id>` — one queue per peerhub |
 
-IMPORTANT: call `.broker.define_broker` before importing `.tasks`.
+IMPORTANT: call `.broker.define_peerhub_broker_as_client` (a service that only kicks `peerhub` tasks) or `.broker.define_peerhub_broker_as_worker` (the process that consumes the queue of its own `peerhub_id`) before importing `.tasks`.
 
 To route task to `peerhub` use `.broker.route_task_to_peerhub(task, peerhub_id: UUID)`.
 

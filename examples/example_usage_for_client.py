@@ -3,8 +3,8 @@ from uuid import uuid4
 from pydantic import AmqpDsn, HttpUrl, RedisDsn
 
 from shiro.peerhub.broker import (
-    BrokerConfigForClient,
-    define_broker,
+    PeerhubBrokerConfigForClient,
+    define_peerhub_broker_as_client,
     route_task_to_peerhub,
 )
 from shiro.util.env import EnvConfig
@@ -33,8 +33,8 @@ if env_config.otel_collector_endpoint is not None:
         )
     )
 
-broker = define_broker(
-    BrokerConfigForClient(
+broker = define_peerhub_broker_as_client(
+    PeerhubBrokerConfigForClient(
         broker_url=env_config.broker_url,
         result_backend_url=env_config.broker_result_backend_url,
     )
@@ -42,7 +42,7 @@ broker = define_broker(
 
 _ = broker.startup()
 
-# import tasks after define_broker was called
+# import tasks after define_peerhub_broker_as_client was called
 # kiq tasks after broker startup
 
 from shiro.peerhub.models import Peer

@@ -11,12 +11,12 @@ Module: `.broker`.
 
 Broker configs:
 
-| Name                    | Fields                                                       |
-| ----------------------- | ------------------------------------------------------------ |
-| `BrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` |
-| `BrokerConfigForWorker` | `BrokerConfigForClient`<br/>+ `queue_name: str` (default `main_api_queue`) |
+| Name                           | Fields                                                       |
+| ------------------------------ | ------------------------------------------------------------ |
+| `MainApiBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `main_api_exchange`) |
+| `MainApiBrokerConfigForWorker` | `MainApiBrokerConfigForClient`<br/>+ `queue_name: str` (default `main_api_queue`) |
 
-IMPORTANT: call `.broker.define_broker` before importing `.tasks`.
+IMPORTANT: call `.broker.define_main_api_broker_as_client` (a service that only kicks `main_api` tasks) or `.broker.define_main_api_broker_as_worker` (the process that consumes `main_api_queue`) before importing `.tasks`.
 
 # Models
 
