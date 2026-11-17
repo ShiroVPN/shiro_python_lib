@@ -8,17 +8,18 @@ This module: `shiro.telegram_bot`.
 
 Module: `.broker`.
 
-Broker config:
+Broker configs:
 
-| Name                      | Fields            |
-| ------------------------- | ----------------- |
-| `TelegramBotBrokerConfig` | `broker_url: AmqpDsn` |
+| Name                               | Fields                                                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `TelegramBotBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `telegram_bot_exchange`) |
+| `TelegramBotBrokerConfigForWorker` | `TelegramBotBrokerConfigForClient`<br/>+ `queue_name: str` (default `telegram_bot_queue`)<br/>+ `queue_bind_arguments: dict[str, str]` (default `{}`) |
 
-IMPORTANT: call `.broker.define_telegram_bot_broker_as_client` in a service that notifies the bot, or `.broker.define_telegram_bot_broker_as_worker` in the bot itself, before importing `.tasks`. Both build the same TOPIC broker and queue; the name says which side of the queue the process is.
+IMPORTANT: call `.broker.define_telegram_bot_broker_as_client` in a service that notifies the bot, or `.broker.define_telegram_bot_broker_as_worker` in the bot itself, before importing `.tasks`.
 
-`_as_worker` also sets `is_worker_process`: aio-pika opens the read channel in `startup()` only for a worker, so a process that runs the receiver itself needs the flag before it starts the broker. `_as_client` leaves it alone — and a process that passes `run_startup=True` to `run_receiver_task` must not use `_as_worker` as well, or the receiver starts the broker a second time.
+Both go through `shiro.util.broker.create_broker`, as `main_api` and `peerhub` do: HEADERS `telegram_bot_exchange`, the sender's queue `telegram_bot_exchange.client` bound with `{"x-match": "all", "shiro-client": "never"}` and the bot's queue `telegram_bot_queue` bound with `{"x-match": "all"}`, a Redis result backend with `result_ex_time_s` (default 3600) and the OpenTelemetry middleware. A notification returns `None` and nobody reads its result: the backend is the shared builder's shape, not an answer anyone waits for.
 
-Both sides declare `telegram_bot_exchange` and `telegram_bot_queue`, so neither has to start first: a message waits until the bot consumes it. There is no result backend — a notification is fire-and-forget, the sender does not wait for an answer.
+Neither builder sets `is_worker_process`: consuming is the process's own state, not a property of the config. `taskiq worker` sets it in its CLI before importing tasks; the bot, which runs the receiver in its own process, passes `run_startup=True` to `run_receiver_task`, and the receiver sets the flag before `Receiver.listen` calls `startup()`. Without the flag `AioPikaBroker.startup()` opens no read channel and `listen()` raises `NoStartupError` — the process stays up and consumes nothing.
 
 # Models
 

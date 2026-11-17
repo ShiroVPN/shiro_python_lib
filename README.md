@@ -13,9 +13,9 @@ It also has useful functions for defining brokers and tasks, and the shared pyda
 - `main_api`: HEADERS exchange `main_api_exchange`, worker queue `main_api_queue`.
 - `peerhub`: HEADERS exchange `peerhub_exchange`, **one queue per peerhub** — `peerhub_queue.<PEERHUB_ID>`,
   bound with `peerhub_id=<PEERHUB_ID>`; clients route with `route_task_to_peerhub`.
-- `telegram_bot`: TOPIC exchange `telegram_bot_exchange`, queue `telegram_bot_queue` — the bot consumes it
-  in its own process, every service that notifies the bot only publishes. Messages are fire-and-forget:
-  the broker has no result backend.
+- `telegram_bot`: HEADERS exchange `telegram_bot_exchange`, worker queue `telegram_bot_queue` — the bot
+  consumes it in its own process, every service that notifies the bot only publishes. A notification
+  returns `None` and nobody reads its result, so the Redis backend is written and never read.
 - Clients get their own queue `<exchange>.client`, bound with a header no message carries, so a client
   starts fine before any worker has declared its queue. taskiq-aio-pika needs a queue on the client
   side — without one it declares a catch-all `taskiq` queue and takes the routing key from it — and no
@@ -38,8 +38,30 @@ the class name second (a `peerhub` error's message is the human text).
 
 ## Upgrading from 0.6.x
 
-Nothing on the wire changed: every code keeps its string, and an `ErrorCode` member compares equal to
-it, so a consumer that matches `"CLIENT_NOT_FOUND"` keeps working. New in 0.7.0:
+`telegram_bot` now goes through `shiro.util.broker.create_broker` like the other two services: a HEADERS
+exchange instead of TOPIC, a queue of its own on the sending side, a result backend and the telemetry
+middleware. That topology cannot be rolled over a running 0.6.x pair, so on a RabbitMQ that ran 0.6.x:
+
+1. Upgrade every sender and the bot together: a 0.6.x sender publishes to the TOPIC exchange and a 0.7.0
+   worker consumes the HEADERS one, so the two do not meet.
+2. Delete the old exchange before the first 0.7.0 process declares it, otherwise the declaration fails
+   with `PRECONDITION_FAILED` — an exchange type cannot change in place:
+   `rabbitmqctl delete_exchange telegram_bot_exchange`.
+3. `telegram_bot_queue` keeps its name and is bound with `{"x-match": "all"}`; the sender's queue is
+   `telegram_bot_exchange.client`, which nothing routes into. Results go to
+   `BROKER_RESULT_BACKEND_URL` and expire after `result_ex_time_s`, as for the other services.
+4. No builder sets `is_worker_process` any more, so the bot drops its own `await broker.startup()` and
+   passes `run_startup=True` to `run_receiver_task`: the receiver sets the flag and starts the broker
+   itself. A bot that calls `startup()` before the receiver starts listening without the flag will open
+   no read channel and consume nothing.
+
+| 0.6.x | 0.7.0 |
+| --- | --- |
+| `shiro.telegram_bot.broker.TelegramBotBrokerConfig` | `TelegramBotBrokerConfigForClient` / `TelegramBotBrokerConfigForWorker` |
+| `broker_url` only | `result_backend_url` is required, as for the other services |
+
+Business error codes are unchanged: every code keeps its string, and an `ErrorCode` member compares equal
+to it, so a consumer that matches `"CLIENT_NOT_FOUND"` keeps working. New in 0.7.0:
 `shiro.util.errors.ErrorCode` lists the codes, `error_code_of(error)` recovers one from an exception
 that came back through taskiq, and `main_api.exceptions.operation_in_progress` (482) is declared here —
 a worker that declared its own class drops it and imports this one.
@@ -59,9 +81,10 @@ The configurations keep their shape; what changes is the import and which builde
 | `shiro.telegram_bot.broker.define_broker` — the bot itself | `define_telegram_bot_broker_as_worker` |
 
 `_as_client` declares the exchange and its own `<exchange>.client` queue, which nothing routes into: the
-process only kicks tasks and never consumes. `_as_worker` declares the queue the process consumes. Both go
-through `shiro.util.broker.create_broker`, which picks the queue from the config, so the name says which
-role the process plays — and which config type it may pass.
+process only kicks tasks and never consumes. `_as_worker` declares the queue the process consumes.
+`main_api` and `peerhub` go through `shiro.util.broker.create_broker`, which picks the queue from the
+config, so the name says which role the process plays — and which config type it may pass. `telegram_bot`
+built its own TOPIC broker in 0.6.0 and joined the shared builder in 0.7.0.
 
 `TelegramBotBrokerConfig`, `route_task_to_peerhub`, `declare_task` and `define_task` keep their names, and
 `shiro.util.broker` keeps the generic `BrokerConfigForClient` / `BrokerConfigForWorker` and `create_broker`.

@@ -125,9 +125,8 @@ I will go through all the code that you write. I will reject it if it's bad.
 ## Brokers
 
 - A new broker is built by `shiro/util/broker.create_broker`. A service module
-  only names its exchange and queue; it does not open an `AioPikaBroker` of its
-  own unless the traffic pattern is deliberately different, and then it says so
-  in the README.
+  only names its exchange and queue; it never opens an `AioPikaBroker` of its
+  own.
 - The `define_*` name says which side of the queue the process is, and the
   config type it accepts says the same: `_as_client` takes the client config
   and builds a queue nothing routes into, `_as_worker` takes the worker config
@@ -215,7 +214,7 @@ I will go through all the code that you write. I will reject it if it's bad.
 | --- | --- | --- | --- |
 | `main_api` | HEADERS `main_api_exchange` | `main_api_queue` | Redis, `result_ex_time_s` |
 | `peerhub` | HEADERS `peerhub_exchange` | `peerhub_queue.<peerhub_id>`, bound with `peerhub_id` | Redis, `result_ex_time_s` |
-| `telegram_bot` | TOPIC `telegram_bot_exchange` | `telegram_bot_queue`, declared by both sides | none |
+| `telegram_bot` | HEADERS `telegram_bot_exchange` | `telegram_bot_queue` | Redis, `result_ex_time_s` |
 
 - `main_api` and `peerhub` are request/response: `_as_client` declares
   `<exchange>.client` with `{"x-match": "all", "shiro-client": "never"}`, so a
@@ -224,12 +223,15 @@ I will go through all the code that you write. I will reject it if it's bad.
 - `peerhub` is one queue per hub. A shared queue with per-hub bindings would
   let any worker consume a task addressed to another hub; `route_task_to_peerhub`
   labels the message with `peerhub_id` instead of building a queue name.
-- `telegram_bot` is fire-and-forget: notifications return `None`, nobody reads
-  a result, so there is no result backend and no middleware. Both
-  `define_telegram_bot_broker_as_client` and `_as_worker` build the same broker
-  and queue; `_as_worker` also sets `is_worker_process`, because aio-pika opens
-  the read channel in `startup()` only for a worker, and the consumer starts the
-  broker itself.
+- `telegram_bot` shares the request/response shape even though a notification
+  returns `None`: both roles go through `create_broker`, so a sender declares
+  `telegram_bot_exchange.client`, the bot consumes `telegram_bot_queue`, and the
+  result backend is written and never read.
+- A builder never sets `is_worker_process`; the process that consumes does.
+  `taskiq worker` sets it in its CLI, and a process that runs the receiver
+  itself passes `run_startup=True` to `run_receiver_task`, which sets the flag
+  before `Receiver.listen` calls `startup()`. Without it aio-pika opens no read
+  channel and `listen()` raises `NoStartupError`.
 - Results expire so a WireGuard config with a private key (`get_config`,
   `get_connection_config`) and an unread heartbeat do not stay in Redis.
 - Telemetry: `observe(call_id, log_values=False)` records a span, call/return

@@ -1,49 +1,47 @@
 __all__ = [
-    "BROKER_TELEGRAM_BOT_QUEUE_NAME",
-    "BROKER_TELEGRAM_BOT_EXCHANGE_NAME",
-    "TelegramBotBrokerConfig",
+    "TelegramBotBrokerConfigForClient",
+    "TelegramBotBrokerConfigForWorker",
     "define_telegram_bot_broker_as_client",
     "define_telegram_bot_broker_as_worker",
-    "declare_task",
 ]
 
-from pydantic import AmqpDsn, BaseModel
-from taskiq_aio_pika import AioPikaBroker, Exchange, Queue
 
+from taskiq_aio_pika import AioPikaBroker
+
+import shiro.util.broker as b
 import shiro.util.tasks as t
 
 BROKER_TELEGRAM_BOT_QUEUE_NAME = "telegram_bot_queue"
 BROKER_TELEGRAM_BOT_EXCHANGE_NAME = "telegram_bot_exchange"
 
 
-class TelegramBotBrokerConfig(BaseModel):
-    broker_url: AmqpDsn
+class TelegramBotBrokerConfigForClient(b.BrokerConfigForClient):
+    exchange_name: str = BROKER_TELEGRAM_BOT_EXCHANGE_NAME
+
+
+class TelegramBotBrokerConfigForWorker(
+    TelegramBotBrokerConfigForClient, b.BrokerConfigForWorker
+):
+    queue_name: str = BROKER_TELEGRAM_BOT_QUEUE_NAME
+    queue_bind_arguments: dict[str, str] = {}
 
 
 _broker: AioPikaBroker | None = None
 
 
-def _create_broker(config: TelegramBotBrokerConfig) -> AioPikaBroker:
-    return AioPikaBroker(
-        url=str(config.broker_url),
-        exchange=Exchange(name=BROKER_TELEGRAM_BOT_EXCHANGE_NAME),
-    ).with_queue(Queue(name=BROKER_TELEGRAM_BOT_QUEUE_NAME))
-
-
 def define_telegram_bot_broker_as_client(
-    config: TelegramBotBrokerConfig,
+    config: TelegramBotBrokerConfigForClient,
 ) -> AioPikaBroker:
     global _broker
-    _broker = _create_broker(config)
+    _broker = b.create_broker(config)
     return _broker
 
 
 def define_telegram_bot_broker_as_worker(
-    config: TelegramBotBrokerConfig,
+    config: TelegramBotBrokerConfigForWorker,
 ) -> AioPikaBroker:
     global _broker
-    _broker = _create_broker(config)
-    _broker.is_worker_process = True
+    _broker = b.create_broker(config)
     return _broker
 
 
