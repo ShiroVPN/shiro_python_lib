@@ -8,6 +8,7 @@ from shiro.peerhub.broker import (
     route_task_to_peerhub,
 )
 from shiro.util.env import EnvConfig
+from shiro.util.errors import error_code_of
 from shiro.util.tasks import TaskRunner
 from shiro.util.telemetry import OtelConfig, observe, set_up_otel
 
@@ -62,7 +63,11 @@ async def main():
     routed_get_peer = route_task_to_peerhub(get_peer, peerhub_id)
 
     runner = task_sender.runner(routed_get_peer)
-    peer: Peer = await runner.send(peer_id)
+    try:
+        peer: Peer = await runner.send(peer_id)
+    except Exception as error:
+        print(f"peerhub refused: {error_code_of(error)}")
+        raise
 
     print(peer)
 

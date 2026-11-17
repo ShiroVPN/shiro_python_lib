@@ -58,6 +58,9 @@ Module: `.tasks`
 
 Module: `.exceptions`
 
-| Name             | Description                                 |
-| ---------------- | ------------------------------------------- |
-| `peer_not_found` | Raised if peer with given id was not found. |
+| Name             | Description                                    | Error code       |
+| ---------------- | ---------------------------------------------- | ---------------- |
+| `peer_not_found` | Raised if peer with given id was not found.    | `PEER_NOT_FOUND` |
+| `peer_exists`    | Raised if a peer with given id already exists. | `PEER_EXISTS`    |
+
+Both carry `error_code` from `shiro.util.errors.ErrorCode` and no `status_code`: a peerhub error is matched by code, not mapped to an HTTP number. `str(error)` is the human text (`Peer not found: id = …`), not the code, so a caller reads `error_code_of(error)`, which falls back to the class name.

@@ -86,8 +86,15 @@ I will go through all the code that you write. I will reject it if it's bad.
 - A business error is a class with `status_code` and `error_code` as
   `ClassVar`s, named in snake_case (`client_not_found`,
   `balance_will_be_negative`). The `main_api` set lives in
-  `shiro/main_api/exceptions.py` under `AppException`; `peerhub` has its two
-  plain exceptions in `shiro/peerhub/exceptions.py`.
+  `shiro/main_api/exceptions.py` under `AppException` and includes
+  `operation_in_progress` (482); `peerhub` has its two plain exceptions in
+  `shiro/peerhub/exceptions.py`, which carry `error_code` but no `status_code`.
+- Every `error_code` is a member of `shiro.util.errors.ErrorCode`, never a
+  literal string. The member does not travel: taskiq rebuilds the class from
+  `exc_module`, `exc_type` and `exc_args`, so a caller that holds an exception
+  from the queue reads `error_code_of(error)` — the message first
+  (`AppException` puts the code into `args`), the class name second
+  (`peer_not_found`'s message is the human text).
 - `error_code` is the wire name consumers match; `status_code` is the HTTP-ish
   number a consumer maps to its own response. Neither is renumbered casually.
 - A task raises an error class. A model never raises one, and a helper does not
@@ -109,7 +116,8 @@ I will go through all the code that you write. I will reject it if it's bad.
   service has them.
 - `shiro/util/` — the shared broker factory (`broker.py`), the task helpers a
   worker uses (`tasks.py`: `define_task`, `TaskRunner`, `TaskSender`), the
-  settings models (`env.py`), telemetry (`telemetry/`) and the shared aliases
+  settings models (`env.py`), telemetry (`telemetry/`), the error codes
+  (`errors.py`: `ErrorCode`, `error_code_of`) and the shared aliases
   (`types.py`).
 - `shiro/<service>/README.md` — the human table of models, tasks and errors. A
   change to any of them updates that README in the same change.
@@ -157,9 +165,10 @@ I will go through all the code that you write. I will reject it if it's bad.
 
 ## Types and lint
 
-- `poetry run basedpyright` must print `0 errors`. Exactly one warning stands:
-  `reportMissingTypeStubs` for `opentelemetry.instrumentation.logging`, which is
-  the third-party package's gap. A second warning is a defect, not noise.
+- `poetry run basedpyright` must print `0 errors, 0 warnings`.
+  `reportMissingTypeStubs` is off in `pyproject.toml`: the one package without
+  stubs is `opentelemetry.instrumentation.logging`, and a warning that always
+  stands stops being a signal.
 - No `# pyright: ignore` and no relaxed rules. The directive line at the top of
   each `tasks.py` is the exception: it is what makes a bodyless stub type-check.
 - An unused result is written `_ = ...` — `reportUnusedCallResult` is on, and

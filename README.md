@@ -28,6 +28,22 @@ it the tracer and meter are no-ops. `observe()` records call/return events and
 durations but **not** argument or return values unless `log_values=True` — task results include
 WireGuard configs with private keys.
 
+# Errors
+
+`shiro.util.errors.ErrorCode` is the one list of business codes: every `main_api` exception and both
+`peerhub` ones carry a member as `error_code`. A class attribute does not cross the queue — taskiq
+rebuilds the exception from `exc_module`, `exc_type` and `exc_args` — so a caller reads
+`error_code_of(error)`: it tries the message first (an `AppException` puts the code into `args`) and
+the class name second (a `peerhub` error's message is the human text).
+
+## Upgrading from 0.6.x
+
+Nothing on the wire changed: every code keeps its string, and an `ErrorCode` member compares equal to
+it, so a consumer that matches `"CLIENT_NOT_FOUND"` keeps working. New in 0.7.0:
+`shiro.util.errors.ErrorCode` lists the codes, `error_code_of(error)` recovers one from an exception
+that came back through taskiq, and `main_api.exceptions.operation_in_progress` (482) is declared here —
+a worker that declared its own class drops it and imports this one.
+
 ## Upgrading from 0.5.x
 
 Broker entry points are named after the service they belong to and split by the role the process plays.

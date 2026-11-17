@@ -45,3 +45,4 @@ target-version = ['py314']
 profile = "black"
 
 [tool.basedpyright]
+reportMissingTypeStubs = false
