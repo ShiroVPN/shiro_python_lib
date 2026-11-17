@@ -60,9 +60,6 @@ def define_peerhub_broker_as_worker(
     return _broker
 
 
-T = TypeVar("T")
-
-
 def declare_task(task_name: str):
     global _broker
     wrapper = t.get_declare_task_wrapper(_broker, task_name)

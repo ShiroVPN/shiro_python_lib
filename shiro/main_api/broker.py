@@ -6,8 +6,6 @@ __all__ = [
 ]
 
 
-from typing import TypeVar
-
 from taskiq_aio_pika import AioPikaBroker
 
 import shiro.util.broker as b
@@ -45,9 +43,6 @@ def define_main_api_broker_as_worker(
     global _broker
     _broker = b.create_broker(config)
     return _broker
-
-
-T = TypeVar("T")
 
 
 def declare_task(task_name: str):
