@@ -34,7 +34,6 @@ class BrokerEnvConfig(BaseEnvConfig):
 
 
 class OtelEnvConfig(BaseEnvConfig):
-    # Unset = telemetry off (see shiro.util.telemetry.otel_setup.is_set_up).
     otel_collector_endpoint: HttpUrl | None = None
     otel_service_name: str = "shiro"
 

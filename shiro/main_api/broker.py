@@ -34,11 +34,6 @@ _broker: AioPikaBroker | None = None
 def define_main_api_broker_as_client(
     config: MainApiBrokerConfigForClient,
 ) -> AioPikaBroker:
-    """
-    Function: `shiro.main_api.broker.define_main_api_broker_as_client`.
-    Call this function before importing `shiro.main_api.tasks`.
-    Use it in a service that only kicks `main_api` tasks.
-    """
     global _broker
     _broker = b.create_broker(config)
     return _broker
@@ -47,11 +42,6 @@ def define_main_api_broker_as_client(
 def define_main_api_broker_as_worker(
     config: MainApiBrokerConfigForWorker,
 ) -> AioPikaBroker:
-    """
-    Function: `shiro.main_api.broker.define_main_api_broker_as_worker`.
-    Call this function before importing `shiro.main_api.tasks`.
-    Use it in the process that consumes `main_api_queue`.
-    """
     global _broker
     _broker = b.create_broker(config)
     return _broker
@@ -61,18 +51,6 @@ T = TypeVar("T")
 
 
 def declare_task(task_name: str):
-    """
-    - Used in `shiro.main_api.workers` to declare tasks.
-    (declared functions don't have bodies).
-    - Do not use this function to define tasks.
-    (defined functions have bodies).
-    - To define tasks use `shiro.util.define_task`.
-
-    ```python
-    @declare_task(task_name="name")
-    async def foo(...) -> Bar: ...
-    ```
-    """
     global _broker
     wrapper = t.get_declare_task_wrapper(_broker, task_name)
     return wrapper

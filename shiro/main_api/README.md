@@ -50,6 +50,10 @@ Module: `.models`
 
 `TelegramID`, `TelegramUsername` and `Money` are shared pydantic aliases from `shiro.util.types`: a Telegram id ($\ge 0$, $\lt 2^{63}$), a Telegram @username (`[A-Za-z0-9_]{1,32}`, without `@`) and a positive ruble amount with at most two decimals. `PaymentStatus` is `PENDING` | `CONFIRMED` | `CANCELED` | `CHARGEBACKED`, the string `main_api.check_payment` answers with.
 
+`PaymentPost.return_callback` is the bot's own data: it comes back untouched in `telegram_bot.notify_topup`.
+
+`BackendStats.usage` is read from the nodes' live counters, not a history: a node that does not answer is counted in `hubs_failed` and its peers report nothing.
+
 # Tasks
 
 Module: `.tasks`

@@ -31,6 +31,12 @@ Module: `.models`
 
 `NotificationEvent` is `renewed`, `disabled`, `expiring` or `renewing` — the last two differ in whether the subscription would renew itself if the balance stayed as it is now.
 
+`TopupNotification.return_callback` is the bot's own data from `main_api.create_payment`; `method` is Platega's name (`SBPQR` and the like), `None` until the payer picks one.
+
+`ChargebackNotification` arrives weeks or months after the payment: the payer's bank took the money back, the balance stays as it is and the bot tells the client and the admins.
+
+`ReferralBonusNotification` means the invited friend paid for the first time and the bonus is already on the inviter's balance.
+
 `TelegramID`, `TelegramUsername` and `Money` are shared pydantic aliases from `shiro.util.types`: a Telegram id ($\ge 0$, $\lt 2^{63}$), a Telegram @username (`[A-Za-z0-9_]{1,32}`, without `@`) and a positive ruble amount with at most two decimals.
 
 # Tasks

@@ -25,8 +25,6 @@ class Peer(BaseModel):
 
 
 class PeerUsage(BaseModel):
-    """Items of `peerhub.get_usage`: the node's live counters for one peer."""
-
     id: UUID
     enabled: bool
     rx: int = Field(ge=0)
@@ -39,12 +37,8 @@ class Success(BaseModel):
 
 
 class WgConfig(BaseModel):
-    """`peerhub.get_config` answered by a wg-easy peerhub: `.conf` body."""
-
     config: str
 
 
 class XuiConfig(BaseModel):
-    """`peerhub.get_config` answered by a 3x-ui peerhub: subscription URL."""
-
     sub_url: str

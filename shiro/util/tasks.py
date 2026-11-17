@@ -29,30 +29,6 @@ def get_declare_task_wrapper(broker: AioPikaBroker | None, task_name: str):
 def define_task(
     task: AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]],
 ):
-    """
-    Function: `shiro.util[.tasks].define_task`
-    - Use this function to define tasks on TaskIQ worker.
-    (defined functions have bodies).
-
-    ```python
-    from shiro.peerhub.broker import (
-        PeerhubBrokerConfigForWorker,
-        define_peerhub_broker_as_worker,
-    )
-    broker = define_peerhub_broker_as_worker(PeerhubBrokerConfigForWorker(...))
-
-    from shiro.peerhub.workers import get_peer
-    from shiro.peerhub.models import Peer
-    from shiro.util import define_task
-
-    @define_task(get_peer)
-    async def get_peer_implementation(id: UUID, db: db_dependency) -> Peer:
-        return db.get_peer(id)
-    ```
-
-    `taskiq worker your_peerhub_worker:broker`
-    """
-
     def wrapper(func: Callable[PD, CoroutineType[object, object, T]]):
         observed_func = observe(task.task_name)(func)
         new_task = task.broker.register_task(observed_func, task.task_name)

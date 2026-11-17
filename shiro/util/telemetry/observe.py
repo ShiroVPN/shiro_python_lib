@@ -105,13 +105,9 @@ def _observe_call(
     with tracer.start_as_current_span(call_id) as span:
         trace_id = format_trace_id(span.get_span_context().trace_id)
         logger = get_logger(__name__)
-        # Values are opt-in: task results include WireGuard client configs
-        # with private keys, and these records leave the process (stdout,
-        # OTLP collector).
         args_str = (
             ", ".join(
-                [str(v) for v in args]
-                + [f"{k}={v}" for k, v in kwargs.items()]
+                [str(v) for v in args] + [f"{k}={v}" for k, v in kwargs.items()]
             )
             if log_values
             else "..."
@@ -175,12 +171,6 @@ def _observe_call(
 def observe(
     call_id: str, log_values: bool = False
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Span, call/return log records and a duration metric for a function.
-
-    `log_values=True` also records arguments and the return value. Keep it
-    off for anything that handles secrets.
-    """
-
     @overload
     def inner(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]: ...
 
@@ -195,7 +185,9 @@ def observe(
 
             @wraps(func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-                with _observe_call(call_id, func, args, kwargs, log_values) as rv:
+                with _observe_call(
+                    call_id, func, args, kwargs, log_values
+                ) as rv:
                     value = await func(*args, **kwargs)
                     rv.value = value
                     return value

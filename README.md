@@ -17,8 +17,11 @@ It also has useful functions for defining brokers and tasks, and the shared pyda
   in its own process, every service that notifies the bot only publishes. Messages are fire-and-forget:
   the broker has no result backend.
 - Clients get their own queue `<exchange>.client`, bound with a header no message carries, so a client
-  starts fine before any worker has declared its queue.
-- Task results live in Redis for `result_ex_time_s` (default 3600 s).
+  starts fine before any worker has declared its queue. taskiq-aio-pika needs a queue on the client
+  side — without one it declares a catch-all `taskiq` queue and takes the routing key from it — and no
+  bind key may start with `x-`, which a headers exchange ignores when matching.
+- Task results live in Redis for `result_ex_time_s` (default 3600 s): they are read once, right after
+  the task, and an unread result carries a WireGuard config with a private key.
 
 Telemetry is optional: call `set_up_otel(...)` to export traces, metrics and logs over OTLP; without
 it the tracer and meter are no-ops. `observe()` records call/return events and
@@ -78,152 +81,10 @@ API changes: `queue_name` is no longer a client config field; `OTEL_COLLECTOR_EN
 `OTEL_SERVICE_NAME` defaults to `shiro`; the `BROKER_RESULT_BACKEND_URL` error text names the variable;
 `from shiro.util import define_task` (removed in 0.1.0) is `shiro.util.tasks.define_task`.
 
-# Usage example on client
+# Usage examples
 
-```python
-from uuid import uuid4
+- [client](examples/example_usage_for_client.py) — a process that only kicks tasks.
+- [worker](examples/example_usage_for_worker.py) — a process that consumes a queue and implements tasks with `define_task`.
 
-from pydantic import AmqpDsn, HttpUrl, RedisDsn
-
-from shiro.peerhub.broker import (
-    PeerhubBrokerConfigForClient,
-    define_peerhub_broker,
-    route_task_to_peerhub,
-)
-from shiro.util.env import EnvConfig
-from shiro.util.tasks import TaskRunner
-from shiro.util.telemetry import OtelConfig, observe, set_up_otel
-
-
-class MyEnvConfig(EnvConfig):
-    worker_wait_result_timeout: float = 0.1
-    worker_wait_result_check_interval: float = 0.01
-
-
-env_config = MyEnvConfig(
-    broker_url=AmqpDsn("amqp://user:password@localhost:5672"),
-    broker_result_backend_url=RedisDsn("redis://localhost:6379/0"),
-    otel_collector_endpoint=HttpUrl("http://otel-collector:4317"),
-    otel_service_name="broker_client",
-)
-
-# Optional: without it the tracer and meter are no-ops.
-if env_config.otel_collector_endpoint is not None:
-    set_up_otel(
-        OtelConfig(
-            otel_collector_endpoint=env_config.otel_collector_endpoint,
-            otel_service_name=env_config.otel_service_name,
-        )
-    )
-
-broker = define_peerhub_broker(
-    PeerhubBrokerConfigForClient(
-        broker_url=env_config.broker_url,
-        result_backend_url=env_config.broker_result_backend_url,
-    )
-)
-
-_ = broker.startup()
-
-# import tasks after define_peerhub_broker was called
-# kiq tasks after broker startup
-
-from shiro.peerhub.models import Peer
-from shiro.peerhub.tasks import get_peer
-
-task_sender = TaskRunner(
-    wait_result_timeout=env_config.worker_wait_result_timeout,
-    wait_result_check_interval=env_config.worker_wait_result_check_interval,
-)
-
-
-@observe("client.main")
-async def main():
-    peerhub_id = uuid4()
-    peer_id = uuid4()
-
-    routed_get_peer = route_task_to_peerhub(get_peer, peerhub_id)
-
-    runner = task_sender.runner(routed_get_peer)
-    peer: Peer = await runner.send(peer_id)
-
-    print(peer)
-
-
-if __name__ == "__main__":
-    print("Success!")
-```
-
-# Usage example on worker
-
-```python
-from typing import Annotated
-
-from pydantic import AmqpDsn, HttpUrl, RedisDsn
-from taskiq import TaskiqDepends
-
-from shiro.main_api.broker import (
-    MainApiBrokerConfigForWorker,
-    define_main_api_broker,
-)
-from shiro.util.env import EnvConfig
-from shiro.util.telemetry import (
-    OtelConfig,
-    observe_decorator_with_prefix,
-    set_up_otel,
-)
-
-env_config = EnvConfig(
-    broker_url=AmqpDsn("amqp://user:password@localhost:5672"),
-    broker_result_backend_url=RedisDsn("redis://localhost:6379/0"),
-    otel_collector_endpoint=HttpUrl("http://otel-collector:4317"),
-    otel_service_name="broker_client",
-)
-
-# Optional: without it the tracer and meter are no-ops.
-if env_config.otel_collector_endpoint is not None:
-    set_up_otel(
-        OtelConfig(
-            otel_collector_endpoint=env_config.otel_collector_endpoint,
-            otel_service_name=env_config.otel_service_name,
-        )
-    )
-
-broker = define_main_api_broker(
-    MainApiBrokerConfigForWorker(
-        broker_url=env_config.broker_url,
-        result_backend_url=env_config.broker_result_backend_url,
-    )
-)
-
-# import tasks after `define_main_api_broker` was called
-
-
-from shiro.main_api.models import Client, ClientGet
-from shiro.main_api.tasks import get_client
-from shiro.util.tasks import define_task
-
-db_observer = observe_decorator_with_prefix("worker.Database")
-
-
-class Database:
-    @db_observer
-    async def get_client(self, telegram_id: int) -> Client:
-        raise NotImplementedError(telegram_id)
-
-
-def get_database():
-    yield Database()
-
-
-db_dependency = Annotated[Database, TaskiqDepends(get_database)]
-
-
-@define_task(get_client)
-async def get_client_impl(client_data: ClientGet, db: db_dependency) -> Client:
-    return await db.get_client(client_data.telegram_id)
-
-
-if __name__ == "__main__":
-    print("Success!")
-```
+A tasks module may only be imported after a broker exists: call `define_*_broker_as_client` or
+`define_*_broker_as_worker` first, start the broker, and only then import `.tasks` and kick.

@@ -75,8 +75,6 @@ def set_up_otel(otel_config: OtelConfig):
 
 
 def is_set_up() -> bool:
-    """Telemetry is optional: without set_up_otel() the tracer and meter
-    below are the SDK's no-op defaults and nothing is exported."""
     return _state is not None
 
 
