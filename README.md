@@ -1,129 +1,24 @@
-# Shiro python module
+# shiro_python_lib
 
-This module defines TaskIQ tasks for workers `peerhub` and `main_api`, and the notifications a service sends to the Telegram bot. For more information see README files:
+The contract library of the ShiroVPN stack: the taskiq task surface of every
+service and the pydantic models that cross the queue. The services implement
+the tasks and import the models; they never declare their own.
 
-- [main_api](shiro/main_api/README.md)
-- [peerhub](shiro/peerhub/README.md)
-- [telegram_bot](shiro/telegram_bot/README.md)
-
-It also has useful functions for defining brokers and tasks, and the shared pydantic types in `shiro.util.types` — `TelegramID`, `TelegramUsername` and `Money`.
-
-# Brokers and queues
-
-- `main_api`: HEADERS exchange `main_api_exchange`, worker queue `main_api_queue`.
-- `peerhub`: HEADERS exchange `peerhub_exchange`, **one queue per peerhub** — `peerhub_queue.<PEERHUB_ID>`,
-  bound with `peerhub_id=<PEERHUB_ID>`; clients route with `route_task_to_peerhub`.
-- `telegram_bot`: HEADERS exchange `telegram_bot_exchange`, worker queue `telegram_bot_queue` — the bot
-  consumes it in its own process, every service that notifies the bot only publishes. A notification
-  returns `None` and nobody reads its result, so the Redis backend is written and never read.
-- Clients get their own queue `<exchange>.client`, bound with a header no message carries, so a client
-  starts fine before any worker has declared its queue. taskiq-aio-pika needs a queue on the client
-  side — without one it declares a catch-all `taskiq` queue and takes the routing key from it — and no
-  bind key may start with `x-`, which a headers exchange ignores when matching.
-- Task results live in Redis for `result_ex_time_s` (default 3600 s): they are read once, right after
-  the task, and an unread result carries a WireGuard config with a private key.
-
-Telemetry is optional: call `set_up_otel(...)` to export traces, metrics and logs over OTLP; without
-it the tracer and meter are no-ops. `observe()` records call/return events and
-durations but **not** argument or return values unless `log_values=True` — task results include
-WireGuard configs with private keys.
-
-# Errors
-
-`shiro.util.errors.ErrorCode` is the one list of business codes: every `main_api` exception and both
-`peerhub` ones carry a member as `error_code`. A class attribute does not cross the queue — taskiq
-rebuilds the exception from `exc_module`, `exc_type` and `exc_args` — so a caller reads
-`error_code_of(error)`: it tries the message first (an `AppException` puts the code into `args`) and
-the class name second (a `peerhub` error's message is the human text).
-
-## Upgrading from 0.6.x
-
-`telegram_bot` now goes through `shiro.util.broker.create_broker` like the other two services: a HEADERS
-exchange instead of TOPIC, a queue of its own on the sending side, a result backend and the telemetry
-middleware. That topology cannot be rolled over a running 0.6.x pair, so on a RabbitMQ that ran 0.6.x:
-
-1. Upgrade every sender and the bot together: a 0.6.x sender publishes to the TOPIC exchange and a 0.7.0
-   worker consumes the HEADERS one, so the two do not meet.
-2. Delete the old exchange before the first 0.7.0 process declares it, otherwise the declaration fails
-   with `PRECONDITION_FAILED` — an exchange type cannot change in place:
-   `rabbitmqctl delete_exchange telegram_bot_exchange`.
-3. `telegram_bot_queue` keeps its name and is bound with `{"x-match": "all"}`; the sender's queue is
-   `telegram_bot_exchange.client`, which nothing routes into. Results go to
-   `BROKER_RESULT_BACKEND_URL` and expire after `result_ex_time_s`, as for the other services.
-4. No builder sets `is_worker_process` any more, so the bot drops its own `await broker.startup()` and
-   passes `run_startup=True` to `run_receiver_task`: the receiver sets the flag and starts the broker
-   itself. A bot that calls `startup()` before the receiver starts listening without the flag will open
-   no read channel and consume nothing.
-
-| 0.6.x | 0.7.0 |
+| Module | What it declares |
 | --- | --- |
-| `shiro.telegram_bot.broker.TelegramBotBrokerConfig` | `TelegramBotBrokerConfigForClient` / `TelegramBotBrokerConfigForWorker` |
-| `broker_url` only | `result_backend_url` is required, as for the other services |
+| `shiro.main_api` | Client lifecycle, subscriptions and renewals, balances, referral program, beta testers, announcements, Platega payments |
+| `shiro.peerhub` | Peers and their connection config on one VPN node |
+| `shiro.telegram_bot` | The notifications a service sends to the Telegram bot |
+| `shiro.util` | The shared broker builder, task helpers, settings, telemetry and error codes |
 
-Business error codes are unchanged: every code keeps its string, and an `ErrorCode` member compares equal
-to it, so a consumer that matches `"CLIENT_NOT_FOUND"` keeps working. New in 0.7.0:
-`shiro.util.errors.ErrorCode` lists the codes, `error_code_of(error)` recovers one from an exception
-that came back through taskiq, and `main_api.exceptions.operation_in_progress` (482) is declared here —
-a worker that declared its own class drops it and imports this one.
+Consumers pin a release tag:
 
-## Upgrading from 0.5.x
+```
+poetry add "git+https://github.com/ShiroVPN/shiro_python_lib.git@vX.Y.Z"
+```
 
-Broker entry points are named after the service they belong to and split by the role the process plays.
-The configurations keep their shape; what changes is the import and which builder the process calls.
+Usage: [a process that only kicks tasks](examples/example_usage_for_client.py)
+and [a process that consumes a queue](examples/example_usage_for_worker.py).
 
-| 0.5.x | 0.6.0 |
-| --- | --- |
-| `shiro.main_api.broker.BrokerConfigForClient` / `define_broker` | `MainApiBrokerConfigForClient` / `define_main_api_broker_as_client` |
-| `shiro.main_api.broker.BrokerConfigForWorker` / `define_broker` | `MainApiBrokerConfigForWorker` / `define_main_api_broker_as_worker` |
-| `shiro.peerhub.broker.BrokerConfigForClient` / `define_broker` | `PeerhubBrokerConfigForClient` / `define_peerhub_broker_as_client` |
-| `shiro.peerhub.broker.BrokerConfigForWorker` / `define_broker` | `PeerhubBrokerConfigForWorker` / `define_peerhub_broker_as_worker` |
-| `shiro.telegram_bot.broker.define_broker` — a service that notifies the bot | `define_telegram_bot_broker_as_client` |
-| `shiro.telegram_bot.broker.define_broker` — the bot itself | `define_telegram_bot_broker_as_worker` |
-
-`_as_client` declares the exchange and its own `<exchange>.client` queue, which nothing routes into: the
-process only kicks tasks and never consumes. `_as_worker` declares the queue the process consumes.
-`main_api` and `peerhub` go through `shiro.util.broker.create_broker`, which picks the queue from the
-config, so the name says which role the process plays — and which config type it may pass. `telegram_bot`
-built its own TOPIC broker in 0.6.0 and joined the shared builder in 0.7.0.
-
-`TelegramBotBrokerConfig`, `route_task_to_peerhub`, `declare_task` and `define_task` keep their names, and
-`shiro.util.broker` keeps the generic `BrokerConfigForClient` / `BrokerConfigForWorker` and `create_broker`.
-Exchanges, queue names, bindings and routing are untouched, so 0.5.x and 0.6.0 workers talk to each other
-while a fleet is being upgraded.
-
-## Upgrading from 0.3.x
-
-`peerhub.get_config` now answers `WgConfig | XuiConfig` instead of a plain
-string: a wg-easy peerhub returns `{config}` (the `.conf` body), a 3x-ui one
-`{sub_url}` (the subscription URL). `main_api.get_connection_config` passes the
-same union through, so a reader that used to expect a string must validate the
-shape it got. Taskiq sends the result as JSON primitives, so validate the dict,
-not a shared class.
-
-## Upgrading from 0.1.x
-
-Peerhub workers move from the shared `peerhub_queue` to `peerhub_queue.<PEERHUB_ID>`. On a RabbitMQ that
-ran the old chain, in this order:
-
-1. Upgrade `main_api_worker` (and every other peerhub *client*) to 0.2.0 first. Old clients require the
-   old `peerhub_queue` to exist at startup; new ones do not.
-2. Per hub: stop the old worker, then start the new one. Never run both for one hub: a headers exchange
-   delivers each message to every matching queue, so the task would execute twice.
-3. Delete the old queue, otherwise it keeps a copy of every peerhub message with nobody consuming:
-   `rabbitmqctl delete_queue peerhub_queue`. Check for other stale bindings with
-   `rabbitmqctl list_bindings source_name destination_name arguments | grep peerhub_exchange`
-   — every destination must be a running hub's `peerhub_queue.<PEERHUB_ID>` or `peerhub_exchange.client`.
-4. Results written by 0.1.x workers have no TTL. Once every worker is on 0.2.0, clear them:
-   `redis-cli FLUSHDB` on the result database (nothing else lives there).
-
-API changes: `queue_name` is no longer a client config field; `OTEL_COLLECTOR_ENDPOINT` is optional and
-`OTEL_SERVICE_NAME` defaults to `shiro`; the `BROKER_RESULT_BACKEND_URL` error text names the variable;
-`from shiro.util import define_task` (removed in 0.1.0) is `shiro.util.tasks.define_task`.
-
-# Usage examples
-
-- [client](examples/example_usage_for_client.py) — a process that only kicks tasks.
-- [worker](examples/example_usage_for_worker.py) — a process that consumes a queue and implements tasks with `define_task`.
-
-A tasks module may only be imported after a broker exists: call `define_*_broker_as_client` or
-`define_*_broker_as_worker` first, start the broker, and only then import `.tasks` and kick.
+Broker topology, the model/task/error tables of each module, the upgrade notes
+and the rules a change has to satisfy live in [AGENTS.md](AGENTS.md).
