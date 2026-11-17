@@ -16,6 +16,8 @@ Broker config:
 
 IMPORTANT: call `.broker.define_telegram_bot_broker_as_client` in a service that notifies the bot, or `.broker.define_telegram_bot_broker_as_worker` in the bot itself, before importing `.tasks`. Both build the same TOPIC broker and queue; the name says which side of the queue the process is.
 
+`_as_worker` also sets `is_worker_process`: aio-pika opens the read channel in `startup()` only for a worker, so a process that runs the receiver itself needs the flag before it starts the broker. `_as_client` leaves it alone — and a process that passes `run_startup=True` to `run_receiver_task` must not use `_as_worker` as well, or the receiver starts the broker a second time.
+
 Both sides declare `telegram_bot_exchange` and `telegram_bot_queue`, so neither has to start first: a message waits until the bot consumes it. There is no result backend — a notification is fire-and-forget, the sender does not wait for an answer.
 
 # Models

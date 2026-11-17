@@ -7,8 +7,6 @@ __all__ = [
     "declare_task",
 ]
 
-from typing import TypeVar
-
 from pydantic import AmqpDsn, BaseModel
 from taskiq_aio_pika import AioPikaBroker, Exchange, Queue
 
@@ -45,10 +43,8 @@ def define_telegram_bot_broker_as_worker(
 ) -> AioPikaBroker:
     global _broker
     _broker = _create_broker(config)
+    _broker.is_worker_process = True
     return _broker
-
-
-T = TypeVar("T")
 
 
 def declare_task(task_name: str):

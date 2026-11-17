@@ -227,7 +227,9 @@ I will go through all the code that you write. I will reject it if it's bad.
 - `telegram_bot` is fire-and-forget: notifications return `None`, nobody reads
   a result, so there is no result backend and no middleware. Both
   `define_telegram_bot_broker_as_client` and `_as_worker` build the same broker
-  and queue; the name states which side of the queue the process is.
+  and queue; `_as_worker` also sets `is_worker_process`, because aio-pika opens
+  the read channel in `startup()` only for a worker, and the consumer starts the
+  broker itself.
 - Results expire so a WireGuard config with a private key (`get_config`,
   `get_connection_config`) and an unread heartbeat do not stay in Redis.
 - Telemetry: `observe(call_id, log_values=False)` records a span, call/return
