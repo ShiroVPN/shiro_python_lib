@@ -12,7 +12,7 @@ from shiro.peerhub.tasks import get_peer
 from shiro.util.env import EnvConfig
 from shiro.util.errors import error_code_of
 from shiro.util.tasks import TaskRunner
-from shiro.util.telemetry import OtelConfig, observe, set_up_otel
+from shiro.util.telemetry import observe
 
 
 class MyEnvConfig(EnvConfig):
@@ -23,18 +23,10 @@ class MyEnvConfig(EnvConfig):
 env_config = MyEnvConfig(
     broker_url=AmqpDsn("amqp://user:password@localhost:5672"),
     broker_result_backend_url=RedisDsn("redis://localhost:6379/0"),
+    # Optional: telemetry stays off while this is None.
     otel_collector_endpoint=HttpUrl("http://otel-collector:4317"),
     otel_service_name="broker_client",
 )
-
-# Optional: without it the tracer and meter are no-ops.
-if env_config.otel_collector_endpoint is not None:
-    set_up_otel(
-        OtelConfig(
-            otel_collector_endpoint=env_config.otel_collector_endpoint,
-            otel_service_name=env_config.otel_service_name,
-        )
-    )
 
 broker = get_peerhub_broker_as_client(
     PeerhubBrokerConfigForClient(

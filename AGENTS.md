@@ -168,9 +168,14 @@ I will go through all the code that you write. I will reject it if it's bad.
   `EnvConfig` rather than a bare `BaseEnvConfig`.
 - A required field is `required_field("var_name")`: it fails at start-up naming
   the variable instead of defaulting to something plausible.
-- Telemetry is optional. `otel_collector_endpoint` unset means off; the
-  `OpenTelemetryMiddleware` is attached unconditionally because it is a no-op
-  until `set_up_otel` installs providers.
+- Telemetry is armed by constructing the settings class: `OtelEnvConfig`'s
+  `model_validator(mode="after")` installs the providers when
+  `otel_collector_endpoint` is set, and a settings object built twice is a
+  no-op instead of a `RuntimeError`. `otel_collector_endpoint` unset means off,
+  and a service never calls `set_up_otel` itself. The
+  `OpenTelemetryMiddleware` stays attached unconditionally and may be built
+  before the settings: its tracer and its counters are OTel proxies that
+  resolve the provider when `set_up_otel` lands.
 - `result_ex_time_s` (3600 by default) is a config field on the client config
   and is set by whoever runs the broker, not a constant.
 - Related knobs stay together and a field names the state it measures and its
@@ -225,8 +230,9 @@ I will go through all the code that you write. I will reject it if it's bad.
 - No cache either: a per-call value is an argument, a per-process value is a
   field of the object that owns it.
 - `_state` in `shiro/util/telemetry/otel_setup.py` is the one declared
-  exception — the providers are process-wide by definition, and `set_up_otel`
-  refuses a second call.
+  exception — the providers are process-wide by definition. `set_up_telemetry`
+  on `OtelEnvConfig` is the trigger: it skips a process that already has
+  providers, while `set_up_otel` still refuses an explicit second call.
 
 # Broker topology
 
@@ -586,6 +592,28 @@ The bot implements them with `get_define_task_wrapper(broker)` from
 bot's own and are not part of this contract.
 
 # Upgrading
+
+## Upgrading from 2.1.x
+
+2.2.0 arms telemetry when the settings class is constructed: `OtelEnvConfig`
+installs the providers from a `model_validator(mode="after")` as soon as
+`otel_collector_endpoint` is set, and a second construction is a no-op. A
+service no longer calls `set_up_otel` itself.
+
+| 2.1.x | 2.2.0 |
+| --- | --- |
+| `env_config = EnvConfig()` then `if env_config.otel_collector_endpoint is not None: set_up_otel(OtelConfig(...))` | `env_config = EnvConfig()` |
+| `from shiro.util.telemetry import OtelConfig, set_up_otel` in `broker.py` | dropped |
+
+`peerhub_wireguard_worker` and `peerhub_3xui_worker` keep the guarded block in
+`broker.py`, so they fail at import with `RuntimeError: OTEL is already set up.`
+— delete it in the change that moves the pin. A process whose `.env` sets
+`OTEL_COLLECTOR_ENDPOINT` now exports with no code change at all, so
+`main_api_worker`, `BotV2` and `peerhub_heartbeat` start sending spans, metrics
+and logs they did not send before, because they never called `set_up_otel`.
+
+`set_up_otel` stays public and still refuses a second call: it is the path for a
+process with no settings class, such as `pytest`, not for a service.
 
 ## Upgrading from 2.0.x
 

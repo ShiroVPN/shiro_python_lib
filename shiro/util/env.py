@@ -1,7 +1,9 @@
 from typing import Callable, ClassVar, NoReturn, TypeVar
 
-from pydantic import AmqpDsn, Field, HttpUrl, RedisDsn
+from pydantic import AmqpDsn, Field, HttpUrl, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from shiro.util.telemetry import OtelConfig, is_set_up, set_up_otel
 
 
 def require(var_name: str) -> Callable[[], NoReturn]:
@@ -36,6 +38,17 @@ class BrokerEnvConfig(BaseEnvConfig):
 class OtelEnvConfig(BaseEnvConfig):
     otel_collector_endpoint: HttpUrl | None = None
     otel_service_name: str = "shiro"
+
+    @model_validator(mode="after")
+    def set_up_telemetry(self) -> "OtelEnvConfig":
+        if self.otel_collector_endpoint is not None and not is_set_up():
+            set_up_otel(
+                OtelConfig(
+                    otel_collector_endpoint=self.otel_collector_endpoint,
+                    otel_service_name=self.otel_service_name,
+                )
+            )
+        return self
 
 
 class EnvConfig(BrokerEnvConfig, OtelEnvConfig):
