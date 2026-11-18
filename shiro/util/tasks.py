@@ -2,39 +2,65 @@ from dataclasses import dataclass
 from types import CoroutineType
 from typing import Callable, ParamSpec, TypeVar
 
-from taskiq import AsyncTaskiqDecoratedTask
+from taskiq import AsyncBroker, AsyncTaskiqDecoratedTask
 from taskiq.kicker import AsyncKicker
-from taskiq_aio_pika import AioPikaBroker
 
 from shiro.util.telemetry import observe
 
 T = TypeVar("T")
 P = ParamSpec("P")
-PD = ParamSpec("PD")  # P with dependencies
+
+type TaskFunc[**P, T] = Callable[P, CoroutineType[object, object, T]]
 
 
-def get_declare_task_wrapper(broker: AioPikaBroker | None, task_name: str):
-    def wrapper(func: Callable[P, CoroutineType[object, object, T]]):
-        if broker is None:
-            raise RuntimeError(f"""[{task_name}]: \
-                You can not declare tasks before setting up broker. \
-                Call a `define_*_broker_as_client` or a \
-                `define_*_broker_as_worker` function first.""")
-        new_task = broker.register_task(func, task_name)
-        return new_task
-
-    return wrapper
+@dataclass(kw_only=True)
+class TaskiqTask[**P, T]:
+    name: str
+    func: TaskFunc[P, T]
 
 
-def define_task(
-    task: AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]],
-):
-    def wrapper(func: Callable[PD, CoroutineType[object, object, T]]):
-        observed_func = observe(task.task_name)(func)
-        new_task = task.broker.register_task(observed_func, task.task_name)
-        return new_task
+type TaskDecorator[**P, T] = Callable[[TaskFunc[P, T]], TaskiqTask[P, T]]
+type TaskImplDecorator[**P, T] = Callable[
+    [TaskFunc[P, T]],
+    AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]],
+]
 
-    return wrapper
+
+def get_declare_task_wrapper(
+    prefix: str,
+) -> Callable[[str], TaskDecorator[P, T]]:
+    def inner(task_name: str) -> TaskDecorator[P, T]:
+        def wrapper(func: TaskFunc[P, T]) -> TaskiqTask[P, T]:
+            return TaskiqTask(name=f"{prefix}.{task_name}", func=func)
+
+        return wrapper
+
+    return inner
+
+
+def get_define_task_wrapper(
+    broker: AsyncBroker,
+) -> Callable[[TaskiqTask[P, T]], TaskImplDecorator[P, T]]:
+    def inner(task: TaskiqTask[P, T]) -> TaskImplDecorator[P, T]:
+        def wrapper(
+            func: TaskFunc[P, T],
+        ) -> AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]]:
+            return broker.register_task(observe(task.name)(func), task.name)
+
+        return wrapper
+
+    return inner
+
+
+def get_task_kicker(
+    broker: AsyncBroker,
+    task: TaskiqTask[P, T],
+) -> AsyncKicker[P, CoroutineType[object, object, T]]:
+    return AsyncKicker(
+        task_name=task.name,
+        broker=broker,
+        labels={},
+    )
 
 
 @dataclass(kw_only=True)

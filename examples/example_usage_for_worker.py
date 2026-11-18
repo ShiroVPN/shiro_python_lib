@@ -1,13 +1,16 @@
-from typing import Annotated
+from collections.abc import Generator
 
 from pydantic import AmqpDsn, HttpUrl, RedisDsn
 from taskiq import TaskiqDepends
 
 from shiro.main_api.broker import (
     MainApiBrokerConfigForWorker,
-    define_main_api_broker_as_worker,
+    get_main_api_broker_as_worker,
 )
+from shiro.main_api.models import Client, ClientGet
+from shiro.main_api.tasks import get_client
 from shiro.util.env import EnvConfig
+from shiro.util.tasks import get_define_task_wrapper
 from shiro.util.telemetry import (
     OtelConfig,
     observe_decorator_with_prefix,
@@ -30,19 +33,14 @@ if env_config.otel_collector_endpoint is not None:
         )
     )
 
-broker = define_main_api_broker_as_worker(
+broker = get_main_api_broker_as_worker(
     MainApiBrokerConfigForWorker(
         broker_url=env_config.broker_url,
         result_backend_url=env_config.broker_result_backend_url,
     )
 )
 
-# import tasks after `define_main_api_broker_as_worker` was called
-
-
-from shiro.main_api.models import Client, ClientGet
-from shiro.main_api.tasks import get_client
-from shiro.util.tasks import define_task
+define_main_api_task = get_define_task_wrapper(broker)
 
 db_observer = observe_decorator_with_prefix("worker.Database")
 
@@ -53,15 +51,17 @@ class Database:
         raise NotImplementedError(telegram_id)
 
 
-def get_database():
+def get_database() -> Generator[Database]:
     yield Database()
 
 
-db_dependency = Annotated[Database, TaskiqDepends(get_database)]
+db_dependency = TaskiqDepends(get_database)
 
 
-@define_task(get_client)
-async def get_client_impl(client_data: ClientGet, db: db_dependency) -> Client:
+@define_main_api_task(get_client)
+async def get_client_impl(
+    client_data: ClientGet, db: Database = db_dependency
+) -> Client:
     return await db.get_client(client_data.telegram_id)
 
 
