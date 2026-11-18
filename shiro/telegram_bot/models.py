@@ -12,7 +12,12 @@ from enum import StrEnum
 from heliclockter import datetime_utc
 from pydantic import BaseModel, Field
 
-from shiro.util.types import Money, TelegramID, TelegramUsername
+from shiro.util.types import (
+    Money,
+    SubscriptionName,
+    TelegramID,
+    TelegramUsername,
+)
 
 
 class NotificationEvent(StrEnum):
@@ -25,7 +30,7 @@ class NotificationEvent(StrEnum):
 class SubscriptionNotification(BaseModel):
     telegram_id: TelegramID
     event: NotificationEvent
-    name: str
+    name: SubscriptionName
     expired_at: datetime_utc
     balance: Decimal
 

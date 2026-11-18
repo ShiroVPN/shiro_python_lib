@@ -355,7 +355,7 @@ it.
 
 | Name | Fields |
 | --- | --- |
-| `SubscriptionConfig` | `name: str`<br/>`cost: Decimal` ($\ge 0$)<br/>`timedelta_in_seconds: int` (> 0) |
+| `SubscriptionConfig` | `name: SubscriptionName`<br/>`cost: Decimal` ($\ge 0$)<br/>`timedelta_in_seconds: int` (> 0) |
 | `Client` | `telegram_id: TelegramID`<br/>`balance: Decimal`<br/>`activated_trial: bool`<br/>`autoupdate_subscriptions: bool`<br/>`created_at: datetime_utc`<br/>`updated_at: datetime_utc` |
 | `ClientGet` | `telegram_id: TelegramID` |
 | `ClientPost` | inherits `ClientGet`<br/>`referrer_telegram_id: TelegramID \| None = None` |
@@ -363,10 +363,10 @@ it.
 | `TransactionPost` | inherits `ClientGet`<br/>`delta: Decimal` |
 | `Transaction` | `old_balance: Decimal`<br/>`new_balance: Decimal`<br/>`delta: Decimal` |
 | `Subscription` | `subscription_config: SubscriptionConfig`<br/>`enabled: bool`<br/>`autoupdate: bool`<br/>`expired_at: datetime_utc`<br/>`created_at: datetime_utc` |
-| `SubscriptionPost` | inherits `ClientGet`<br/>`subscription_option_name: str` |
+| `SubscriptionPost` | inherits `ClientGet`<br/>`subscription_option_name: SubscriptionName` |
 | `SubscriptionDaysPost` | inherits `ClientGet`<br/>`days: int` (1–31) |
 | `SubscriptionDiscountPost` | inherits `SubscriptionPost`<br/>`discount_percent: int` (1–50) |
-| `ReferralInfo` | `enabled: bool`<br/>`bonus: Decimal` ($\ge 0$)<br/>`trial_name: str`<br/>`trial_seconds: int` (> 0)<br/>`invited: int` ($\ge 0$)<br/>`paid: int` ($\ge 0$) |
+| `ReferralInfo` | `enabled: bool`<br/>`bonus: Decimal` ($\ge 0$)<br/>`trial_name: SubscriptionName`<br/>`trial_seconds: int` (> 0)<br/>`invited: int` ($\ge 0$)<br/>`paid: int` ($\ge 0$) |
 | `UsagePeer` | `telegram_id: TelegramID`<br/>`username: TelegramUsername \| None`<br/>`tx: int` ($\ge 0$)<br/>`rx: int` ($\ge 0$)<br/>`seconds_ago: float \| None` |
 | `UsageStats` | `enabled_peers`, `connected`, `seen_24h`, `seen_7d`, `tx`, `rx`, `low_traffic_count`, `hubs_failed: int` ($\ge 0$)<br/>`top: list[UsagePeer]`<br/>`low_traffic: list[UsagePeer]` |
 | `BackendStats` | `clients`, `active_trial`, `paying: int` ($\ge 0$)<br/>`usage: UsageStats \| None = None` |
@@ -376,13 +376,16 @@ it.
 | `FeatureGet` | inherits `ClientGet`<br/>`feature: str` (not empty) |
 | `PaymentGet` | `payment_id: UUID` |
 | `PaymentPost` | inherits `ClientGet`<br/>`amount: Money`<br/>`return_callback: str \| None` (at most 64 chars) |
-| `PeerHubHeartbeatData` | `hub_id: UUID`<br/>`server_name: str`<br/>`connection_type: ConnectionType`<br/>`country: str`<br/>`last_seen_at: datetime_utc` |
+| `PeerHubHeartbeatData` | `hub_id: UUID`<br/>`server_name: ServerName`<br/>`connection_type: ConnectionType`<br/>`country: Country`<br/>`last_seen_at: datetime_utc` |
 | `Success` | `ok: bool = True` |
 
-`TelegramID`, `TelegramUsername` and `Money` are shared pydantic aliases from
-`shiro.util.types`: a Telegram id ($\ge 0$, $\lt 2^{63}$), a Telegram
-@username (`[A-Za-z0-9_]{1,32}`, without `@`) and a positive ruble amount with
-at most two decimals. `PaymentStatus` is the `StrEnum` `PENDING` | `CONFIRMED`
+`TelegramID`, `TelegramUsername`, `Money`, `SubscriptionName`, `ServerName` and
+`Country` are shared pydantic aliases from `shiro.util.types`: a Telegram id
+($\ge 0$, $\lt 2^{63}$), a Telegram @username (`[A-Za-z0-9_]{1,32}`, without
+`@`), a positive ruble amount with at most two decimals, and three non-empty
+strings capped by their database columns — a subscription option name at 20
+characters (`subscriptions_table.name`), a hub's server name and country at 15
+(`peerhubs_table.server_name`, `peerhubs_table.country`). `PaymentStatus` is the `StrEnum` `PENDING` | `CONFIRMED`
 | `CANCELED` | `CHARGEBACKED` that `main_api.check_payment` answers with, and
 `AudienceGroup` is the `StrEnum` `all` | `active` | `beta` that
 `main_api.get_announce_recipients` selects. Both are members on the wire too:
@@ -555,7 +558,7 @@ not a property of the config.
 
 | Name | Fields |
 | --- | --- |
-| `SubscriptionNotification` | `telegram_id: TelegramID`<br/>`event: NotificationEvent`<br/>`name: str`<br/>`expired_at: datetime_utc`<br/>`balance: Decimal` |
+| `SubscriptionNotification` | `telegram_id: TelegramID`<br/>`event: NotificationEvent`<br/>`name: SubscriptionName`<br/>`expired_at: datetime_utc`<br/>`balance: Decimal` |
 | `TopupNotification` | `telegram_id: TelegramID`<br/>`amount: Money`<br/>`balance: Decimal`<br/>`return_callback: str \| None`<br/>`method: str \| None`<br/>`platega_id: str` |
 | `ChargebackNotification` | `telegram_id: TelegramID`<br/>`username: TelegramUsername \| None`<br/>`amount: Money`<br/>`platega_id: str`<br/>`paid_at: datetime_utc` |
 | `ReferralBonusNotification` | `telegram_id: TelegramID`<br/>`bonus: Decimal` ($\ge 0$)<br/>`balance: Decimal` |
@@ -592,6 +595,38 @@ The bot implements them with `get_define_task_wrapper(broker)` from
 bot's own and are not part of this contract.
 
 # Upgrading
+
+## Upgrading from 2.2.x
+
+2.3.0 moves the database's string lengths into the field types. The columns
+`subscriptions_table.name`, `peerhubs_table.server_name` and
+`peerhubs_table.country` are `varchar(20)` and `varchar(15)`; a longer or empty
+value used to be accepted by the model and fail, or truncate, at the insert.
+Every wire value is unchanged — each alias is still a `str` — so a 2.2.x and a
+2.3.0 process talk to each other during a rollout. What changes is that such a
+value is now rejected before the task runs.
+
+| 2.2.x | 2.3.0 |
+| --- | --- |
+| `SubscriptionConfig.name: str` | `name: SubscriptionName` (1–20 chars) |
+| `SubscriptionPost.subscription_option_name: str` | `subscription_option_name: SubscriptionName` |
+| `ReferralInfo.trial_name: str` | `trial_name: SubscriptionName` |
+| `PeerHubHeartbeatData.server_name: str` | `server_name: ServerName` (1–15 chars) |
+| `PeerHubHeartbeatData.country: str` | `country: Country` (1–15 chars) |
+| `SubscriptionNotification.name: str` | `name: SubscriptionName` |
+
+`SubscriptionName`, `ServerName` and `Country` are exported from
+`shiro.util.types`. A consumer passes a plain `str` as before; the checker sees
+the same `str`, so no call site changes. Two places do notice at runtime:
+`main_api_worker`'s YAML fails at load when a subscription option name is over
+20 characters, and a heartbeat whose `server_name` or `country` is over 15 is
+rejected by `main_api.update_peerhub_heartbeat`. `peerhub_heartbeat` already
+caps both with its own `ShortText = Annotated[str, StringConstraints(max_length=15)]`,
+so it keeps working and can import `Country` / `ServerName` in place of that
+alias.
+
+`peerhub.Peer.name` and `PeerAdd.name` still write `peers_table.name`
+(`varchar(20)`) as a bare `str`; they are not capped in this release.
 
 ## Upgrading from 2.1.x
 

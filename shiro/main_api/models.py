@@ -32,11 +32,18 @@ from uuid import UUID
 from heliclockter import datetime_utc
 from pydantic import BaseModel, Field, StringConstraints
 
-from shiro.util.types import Money, TelegramID, TelegramUsername
+from shiro.util.types import (
+    Country,
+    Money,
+    ServerName,
+    SubscriptionName,
+    TelegramID,
+    TelegramUsername,
+)
 
 
 class SubscriptionConfig(BaseModel):
-    name: str
+    name: SubscriptionName
     cost: Decimal = Field(ge=0)
     timedelta_in_seconds: int = Field(gt=0)
 
@@ -81,7 +88,7 @@ class Subscription(BaseModel):
 
 
 class SubscriptionPost(ClientGet):
-    subscription_option_name: str
+    subscription_option_name: SubscriptionName
 
 
 class SubscriptionDaysPost(ClientGet):
@@ -95,7 +102,7 @@ class SubscriptionDiscountPost(SubscriptionPost):
 class ReferralInfo(BaseModel):
     enabled: bool
     bonus: Decimal = Field(ge=0)
-    trial_name: str
+    trial_name: SubscriptionName
     trial_seconds: int = Field(gt=0)
     invited: int = Field(ge=0)
     paid: int = Field(ge=0)
@@ -167,9 +174,9 @@ class ConnectionType(StrEnum):
 
 class PeerHubHeartbeatData(BaseModel):
     hub_id: UUID
-    server_name: str
+    server_name: ServerName
     connection_type: ConnectionType
-    country: str
+    country: Country
     last_seen_at: datetime_utc
 
 
