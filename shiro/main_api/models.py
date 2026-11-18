@@ -15,6 +15,7 @@ __all__ = [
     "UsagePeer",
     "BetaTester",
     "BetaTesterPost",
+    "AudienceGroup",
     "AnnounceGet",
     "FeatureGet",
     "PaymentGet",
@@ -25,7 +26,8 @@ __all__ = [
 ]
 
 from decimal import Decimal
-from typing import Annotated, Literal
+from enum import StrEnum
+from typing import Annotated
 from uuid import UUID
 
 from heliclockter import datetime_utc
@@ -33,7 +35,12 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from shiro.util.types import Money, TelegramID, TelegramUsername
 
-PaymentStatus = Literal["PENDING", "CONFIRMED", "CANCELED", "CHARGEBACKED"]
+
+class PaymentStatus(StrEnum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    CANCELED = "CANCELED"
+    CHARGEBACKED = "CHARGEBACKED"
 
 
 class SubscriptionConfig(BaseModel):
@@ -140,8 +147,14 @@ class BetaTesterPost(BaseModel):
     beta_tester: bool
 
 
+class AudienceGroup(StrEnum):
+    all = "all"
+    active = "active"
+    beta = "beta"
+
+
 class AnnounceGet(BaseModel):
-    audience: Literal["all", "active", "beta"]
+    audience: AudienceGroup
 
 
 class FeatureGet(ClientGet):

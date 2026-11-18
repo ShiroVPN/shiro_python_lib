@@ -73,9 +73,13 @@ I will go through all the code that you write. I will reject it if it's bad.
   is a decision, not a default.
 - A constraint repeated across modules is one alias in `shiro/util/types.py`
   (`TelegramID`, `TelegramUsername`, `Money`) and every matching field uses it.
-- A closed set of values is a `Literal` (`PaymentStatus`, `NotificationEvent`,
-  `AnnounceGet.audience`). The branch for an unknown value does not exist on
-  either side; the validator refuses it before a handler runs.
+- A closed set of values is a `StrEnum` (`PaymentStatus`,
+  `NotificationEvent`, `AudienceGroup`, `LogType`), its members named after
+  its wire values. The constructor is the checked boundary and a member
+  compares equal to its string, so a caller branches on
+  `PaymentStatus.CONFIRMED` instead of a free literal and an unknown value
+  fails validation before a handler runs. A `Literal` is not used for one: it
+  documents the set without giving either side a member to name.
 - One payload model per operation. A `Post` model is not reused as an update
   body with a different meaning.
 - A model the code assembles itself is built with its keyword constructor.
@@ -107,8 +111,9 @@ I will go through all the code that you write. I will reject it if it's bad.
 
 ## Module layout
 
-- `shiro/<service>/models.py` — the request and result models, `__all__` on
-  top, nothing else.
+- `shiro/<service>/models.py` — the request and result models and the
+  `StrEnum`s their fields are typed with (`PaymentStatus`,
+  `AudienceGroup`), `__all__` on top, nothing else.
 - `shiro/<service>/tasks.py` — the `<SERVICE>_TASK_PREFIX` constant, the
   `<Service>TaskName` `StrEnum` of bare names, the
   `declare_<service>_task = get_declare_task_wrapper(<SERVICE>_TASK_PREFIX)`
@@ -252,7 +257,9 @@ I will go through all the code that you write. I will reject it if it's bad.
 - Results expire so a WireGuard config with a private key (`get_config`,
   `get_connection_config`) and an unread heartbeat do not stay in Redis.
 - Telemetry: `observe(call_id, log_values=False)` records a span, call/return
-  records and a duration histogram. `log_values=True` also records arguments
+  records and a duration histogram. A record's `log_type` is a `LogType`
+  member, `function_call` or `function_return`, which serializes to the string
+  an external dashboard matches. `log_values=True` also records arguments
   and the return value — never on anything that carries a private key or a
   token.
 
@@ -289,9 +296,10 @@ I will go through all the code that you write. I will reject it if it's bad.
   `notify_chargeback`, `notify_referral_bonus`. The bot owns the texts and the
   chat; a sender only kicks.
 - One notification carries one payload model from
-  `shiro/telegram_bot/models.py`. `SubscriptionNotification.event` is
-  `renewed`, `disabled`, `expiring` or `renewing`; the last two differ in
-  whether the subscription would renew itself at the balance it has now.
+  `shiro/telegram_bot/models.py`. `SubscriptionNotification.event` is a
+  `NotificationEvent` member — `renewed`, `disabled`, `expiring` or
+  `renewing`; the last two differ in whether the subscription would renew
+  itself at the balance it has now.
   `TopupNotification.return_callback` is the bot's own string from
   `main_api.create_payment`, and `method` is Platega's payment name (`SBPQR`
   and the like), `None` until the payer picks one.
@@ -358,7 +366,7 @@ it.
 | `BackendStats` | `clients`, `active_trial`, `paying: int` ($\ge 0$)<br/>`usage: UsageStats \| None = None` |
 | `BetaTester` | `telegram_id: TelegramID`<br/>`username: TelegramUsername \| None` |
 | `BetaTesterPost` | `username: TelegramUsername`<br/>`beta_tester: bool` |
-| `AnnounceGet` | `audience: "all" \| "active" \| "beta"` |
+| `AnnounceGet` | `audience: AudienceGroup` |
 | `FeatureGet` | inherits `ClientGet`<br/>`feature: str` (not empty) |
 | `PaymentGet` | `payment_id: UUID` |
 | `PaymentPost` | inherits `ClientGet`<br/>`amount: Money`<br/>`return_callback: str \| None` (at most 64 chars) |
@@ -368,8 +376,12 @@ it.
 `TelegramID`, `TelegramUsername` and `Money` are shared pydantic aliases from
 `shiro.util.types`: a Telegram id ($\ge 0$, $\lt 2^{63}$), a Telegram
 @username (`[A-Za-z0-9_]{1,32}`, without `@`) and a positive ruble amount with
-at most two decimals. `PaymentStatus` is `PENDING` | `CONFIRMED` | `CANCELED` |
-`CHARGEBACKED`, the string `main_api.check_payment` answers with.
+at most two decimals. `PaymentStatus` is the `StrEnum` `PENDING` | `CONFIRMED`
+| `CANCELED` | `CHARGEBACKED` that `main_api.check_payment` answers with, and
+`AudienceGroup` is the `StrEnum` `all` | `active` | `beta` that
+`main_api.get_announce_recipients` selects. Both are members on the wire too:
+taskiq sends the value, so a reader compares `PaymentStatus.CONFIRMED` against
+either the member it validated or the plain string it got back.
 
 `PaymentPost.return_callback` is the bot's own data: it comes back untouched in
 `telegram_bot.notify_topup`.
@@ -538,9 +550,9 @@ not a property of the config.
 | `ChargebackNotification` | `telegram_id: TelegramID`<br/>`username: TelegramUsername \| None`<br/>`amount: Money`<br/>`platega_id: str`<br/>`paid_at: datetime_utc` |
 | `ReferralBonusNotification` | `telegram_id: TelegramID`<br/>`bonus: Decimal` ($\ge 0$)<br/>`balance: Decimal` |
 
-`NotificationEvent` is `renewed`, `disabled`, `expiring` or `renewing` — the
-last two differ in whether the subscription would renew itself if the balance
-stayed as it is now.
+`NotificationEvent` is the `StrEnum` `renewed`, `disabled`, `expiring` or
+`renewing` — the last two differ in whether the subscription would renew itself
+if the balance stayed as it is now.
 
 `TopupNotification.return_callback` is the bot's own data from
 `main_api.create_payment`; `method` is Platega's name (`SBPQR` and the like),
@@ -570,6 +582,31 @@ The bot implements them with `get_define_task_wrapper(broker)` from
 bot's own and are not part of this contract.
 
 # Upgrading
+
+## Upgrading from 1.0.x
+
+1.1.0 turns the closed value sets into `StrEnum`s: `PaymentStatus` and
+`AudienceGroup` in `shiro.main_api.models`, `NotificationEvent` in
+`shiro.telegram_bot.models`, and `LogType` inside `shiro.util.telemetry`. Every
+wire value is unchanged — a member serializes to the same string and compares
+equal to it — so 1.0.x and 1.1.0 processes talk to each other during a rollout.
+What changes is the type a consumer sees.
+
+| 1.0.x | 1.1.0 |
+| --- | --- |
+| `PaymentStatus = Literal["PENDING", ...]` | `PaymentStatus(StrEnum)`; the annotation and the return type keep the name |
+| `AnnounceGet.audience: Literal["all", "active", "beta"]` | `AnnounceGet.audience: AudienceGroup`, exported beside it; the payload key did not change |
+| `NotificationEvent = Literal["renewed", ...]` | `NotificationEvent(StrEnum)` |
+| `BasicLog.log_type: str` | `log_type: LogType`, still written as `function_call` / `function_return` |
+
+A consumer that passes a raw string where the enum is declared keeps working at
+runtime, but the checker stops accepting it: `was: PaymentStatus = "PENDING"` in
+`main_api_worker` becomes `PaymentStatus.PENDING`. Comparisons such as
+`was == "CONFIRMED"` keep their meaning and are better written
+`was == PaymentStatus.CONFIRMED` — a status read back from a `String` column is
+a plain string, so `is` would compare false. The `AudienceGroup` a consumer
+declared for itself is deleted in favour of this one, and BotV2's
+`event == "renewed"` becomes `event == NotificationEvent.renewed`.
 
 ## Upgrading from 0.7.x
 

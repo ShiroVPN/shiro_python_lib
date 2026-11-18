@@ -7,14 +7,19 @@ __all__ = [
 ]
 
 from decimal import Decimal
-from typing import Literal
+from enum import StrEnum
 
 from heliclockter import datetime_utc
 from pydantic import BaseModel, Field
 
 from shiro.util.types import Money, TelegramID, TelegramUsername
 
-NotificationEvent = Literal["renewed", "disabled", "expiring", "renewing"]
+
+class NotificationEvent(StrEnum):
+    renewed = "renewed"
+    disabled = "disabled"
+    expiring = "expiring"
+    renewing = "renewing"
 
 
 class SubscriptionNotification(BaseModel):

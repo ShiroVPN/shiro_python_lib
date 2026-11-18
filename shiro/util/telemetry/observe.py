@@ -2,6 +2,7 @@ import inspect
 import time
 from collections.abc import Awaitable, Generator
 from contextlib import contextmanager
+from enum import StrEnum
 from functools import wraps
 from typing import (
     Annotated,
@@ -56,8 +57,13 @@ SerializableObject = Annotated[
 ]
 
 
+class LogType(StrEnum):
+    function_call = "function_call"
+    function_return = "function_return"
+
+
 class BasicLog(BaseModel):
-    log_type: str
+    log_type: LogType
     call_id: str
     func_name: str
     trace_id: str
@@ -67,7 +73,7 @@ class BasicLog(BaseModel):
 class LogFunctionCall(BasicLog):
     call_args: tuple[SerializableObject, ...]
     call_kwargs: dict[str, SerializableObject]
-    log_type: str = "function_call"
+    log_type: LogType = LogType.function_call
 
 
 class ReturnValue(BaseModel):
@@ -80,7 +86,7 @@ class LogFunctionReturn(BasicLog):
     error: SerializableException | None
     time_elapsed_ms: float
     time_func_execution_ms: float
-    log_type: str = "function_return"
+    log_type: LogType = LogType.function_return
 
     model_config: ClassVar[ConfigDict] = ConfigDict(
         arbitrary_types_allowed=True
