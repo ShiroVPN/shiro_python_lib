@@ -187,6 +187,7 @@ I will go through all the code that you write. I will reject it if it's bad.
   out twice (`TaskFunc[**P, T]`, `TaskImplDecorator[**P, T]`).
 - A function that only builds a value is `get_*`, and its name carries the type
   it returns: `get_task_kicker` returns an `AsyncKicker`,
+  `get_sender` returns a `TaskSender`,
   `get_main_api_broker_as_client` returns an `AioPikaBroker`.
 - A field or value with a known shape gets that shape; `object`, `Any` and
   `dict[str, Any]` are not neutral choices.
@@ -236,8 +237,9 @@ I will go through all the code that you write. I will reject it if it's bad.
   `{"x-match": "all"} | queue_bind_arguments`.
 - `peerhub` is one queue per hub. A shared queue with per-hub bindings would
   let any worker consume a task addressed to another hub;
-  `route_task_kicker_to_peerhub` labels the message with `peerhub_id` instead
-  of building a queue name.
+  `route_task_to_peerhub` returns a `TaskiqTask` carrying `peerhub_id`, and
+  `get_task_kicker` puts that label on the message instead of building a queue
+  name.
 - `telegram_bot` shares the request/response shape even though a notification
   returns `None`: both roles go through `create_broker`, so a sender declares
   `telegram_bot_exchange.client`, the bot consumes `telegram_bot_queue`, and the
@@ -281,7 +283,7 @@ I will go through all the code that you write. I will reject it if it's bad.
 - `peerhub` (`shiro/peerhub/tasks.py`): `get_peer`, `add_peer`,
   `enable_peer`, `disable_peer`, `delete_peer`, `get_config`, `get_usage`. A
   peerhub worker implements them; callers reach them through
-  `route_task_kicker_to_peerhub`.
+  `route_task_to_peerhub`.
 - `telegram_bot` (`shiro/telegram_bot/tasks.py`): the four notifications the
   bot implements in its own process — `notify_subscription`, `notify_topup`,
   `notify_chargeback`, `notify_referral_bonus`. The bot owns the texts and the
@@ -301,9 +303,17 @@ I will go through all the code that you write. I will reject it if it's bad.
 - `get_stats` answers `BackendStats`, whose `usage` defaults to `None` because a
   backend older than the field sends none; `top` and `low_traffic` hold
   `UsagePeer`, and a node that does not answer counts in `hubs_failed`.
-- A caller waits with `TaskRunner` / `TaskSender`: `wait_result_timeout` bounds
-  the wait, `wait_result_check_interval` is the poll, and a failed task raises
-  the error the worker returned instead of yielding a value.
+- A caller waits with `TaskRunner` / `TaskSender`, both of which take the
+  process's `broker` and a `TaskiqTask`. `TaskRunner` keeps the broker and the
+  two waits and answers a `TaskSender` for one task through `get_sender(task)`;
+  `wait_result_timeout` bounds the wait, `wait_result_check_interval` is the
+  poll, and a failed task raises the error the worker returned instead of
+  yielding a value.
+- A routed task is a new `TaskiqTask`, never a mutated one: `with_labels`
+  answers `replace(self, labels=self.labels | labels)`, and `get_task_kicker`
+  passes `dict(task.labels)`, because `AsyncKicker.with_labels` updates
+  `self.labels` in place — sharing that dict would write a route into the
+  declaration every caller imports.
 
 # Contract reference
 
@@ -451,8 +461,8 @@ Declares the `peerhub` tasks: `main_api` uses them to manage peers, and a
 
 Call `get_peerhub_broker_as_client` (a service that only kicks `peerhub`
 tasks) or `get_peerhub_broker_as_worker` (the process that consumes the queue
-of its own `peerhub_id`). To route a kicker to a peerhub use
-`route_task_kicker_to_peerhub(task_kicker, peerhub_id: UUID)`.
+of its own `peerhub_id`). To route a task to a peerhub use
+`route_task_to_peerhub(task, peerhub_id: UUID)`, which answers a `TaskiqTask[P, T]`.
 
 ### Models
 
@@ -575,11 +585,11 @@ not the wire.
 | `from shiro.<service>.broker import declare_task` | `<SERVICE>_TASK_PREFIX` and `<Service>TaskName` in `shiro.<service>.tasks` |
 | `@declare_task(task_name="main_api.get_client")` | `@declare_main_api_task(MainAPITaskName.get_client)` |
 | `define_task(task)` | `get_define_task_wrapper(broker)(task)` |
-| a task passed to `TaskRunner.runner(...)` or `.kiq(...)` | `get_task_kicker(broker, task)`, an `AsyncKicker` |
+| a task passed to `TaskRunner.runner(...)` or `.kiq(...)` | `TaskRunner(broker=...).get_sender(task).send(...)`, or `get_task_kicker(broker, task)` for a bare `.kiq(...)` |
 | `define_main_api_broker_as_client` / `_as_worker` | `get_main_api_broker_as_client` / `_as_worker` |
 | `define_peerhub_broker_as_client` / `_as_worker` | `get_peerhub_broker_as_client` / `_as_worker` |
 | `define_telegram_bot_broker_as_client` / `_as_worker` | `get_telegram_bot_broker_as_client` / `_as_worker` |
-| `route_task_to_peerhub(task, peerhub_id)` | `route_task_kicker_to_peerhub(task_kicker, peerhub_id)` |
+| `route_task_to_peerhub(decorated_task, peerhub_id)` | `route_task_to_peerhub(task: TaskiqTask, peerhub_id)` — same name, the argument is the declaration |
 | the broker is built before the tasks import | the tasks import first; the broker is passed at the kick and implementation sites |
 
 The implementation decorator now checks its payload and result against the
