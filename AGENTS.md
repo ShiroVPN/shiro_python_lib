@@ -370,7 +370,7 @@ it.
 | `FeatureGet` | inherits `ClientGet`<br/>`feature: str` (not empty) |
 | `PaymentGet` | `payment_id: UUID` |
 | `PaymentPost` | inherits `ClientGet`<br/>`amount: Money`<br/>`return_callback: str \| None` (at most 64 chars) |
-| `PeerHubHeartbeatData` | `hub_id: UUID`<br/>`server_name: str`<br/>`connection_type: str`<br/>`country: str`<br/>`last_seen_at: datetime_utc` |
+| `PeerHubHeartbeatData` | `hub_id: UUID`<br/>`server_name: str`<br/>`connection_type: ConnectionType`<br/>`country: str`<br/>`last_seen_at: datetime_utc` |
 | `Success` | `ok: bool = True` |
 
 `TelegramID`, `TelegramUsername` and `Money` are shared pydantic aliases from
@@ -385,6 +385,10 @@ either the member it validated or the plain string it got back.
 
 `PaymentPost.return_callback` is the bot's own data: it comes back untouched in
 `telegram_bot.notify_topup`.
+
+`ConnectionType` is the `StrEnum` `wireguard` | `xui` a heartbeat carries: the
+kind of VPN node the peerhub runs, so `main_api.update_peerhub_heartbeat`
+rejects a hub reporting an unknown one before it reaches the table.
 
 `BackendStats.usage` is read from the nodes' live counters, not a history: a
 node that does not answer is counted in `hubs_failed` and its peers report
@@ -582,6 +586,27 @@ The bot implements them with `get_define_task_wrapper(broker)` from
 bot's own and are not part of this contract.
 
 # Upgrading
+
+## Upgrading from 2.0.x
+
+2.1.0 closes `PeerHubHeartbeatData.connection_type` with a `StrEnum`:
+`ConnectionType`, exported beside the model, members `wireguard` and `xui`. The
+field sends the same string as before, so a 2.0.x heartbeat and a 2.1.0 worker
+talk to each other during a rollout; what changes is the type both sides see,
+and a hub reporting a kind outside the set now fails validation instead of
+reaching `peerhubs_table`.
+
+| 2.0.x | 2.1.0 |
+| --- | --- |
+| `PeerHubHeartbeatData.connection_type: str` | `connection_type: ConnectionType` |
+| a plain `str` passed into `PeerHubHeartbeatData` | a `ConnectionType` member |
+
+`peerhub_heartbeat` keeps the kind in `config/env.py` as
+`connection_type: ShortText = "wireguard"`. The raw string still validates at
+runtime, but the checker stops accepting it, so the field becomes
+`connection_type: ConnectionType = ConnectionType.wireguard` imported from
+`shiro.main_api.models`. `main_api_worker` needs no edit: it hands the member to
+a `str` column, and a `StrEnum` is a `str`.
 
 ## Upgrading from 1.0.x
 

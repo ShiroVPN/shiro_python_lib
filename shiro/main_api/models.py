@@ -19,6 +19,7 @@ __all__ = [
     "AnnounceGet",
     "FeatureGet",
     "PaymentPost",
+    "ConnectionType",
     "PeerHubHeartbeatData",
     "Success",
 ]
@@ -159,10 +160,15 @@ class PaymentPost(ClientGet):
     )
 
 
+class ConnectionType(StrEnum):
+    wireguard = "wireguard"
+    xui = "xui"
+
+
 class PeerHubHeartbeatData(BaseModel):
     hub_id: UUID
     server_name: str
-    connection_type: str
+    connection_type: ConnectionType
     country: str
     last_seen_at: datetime_utc
 
