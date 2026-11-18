@@ -3,18 +3,17 @@ __all__ = [
     "PeerhubBrokerConfigForWorker",
     "get_peerhub_broker_as_client",
     "get_peerhub_broker_as_worker",
-    "route_task_kicker_to_peerhub",
+    "route_task_to_peerhub",
 ]
 
-from collections.abc import Coroutine
 from typing import ParamSpec, TypeVar
 from uuid import UUID
 
 from pydantic import model_validator
-from taskiq.kicker import AsyncKicker
 from taskiq_aio_pika import AioPikaBroker
 
 import shiro.util.broker as b
+import shiro.util.tasks as t
 
 BROKER_PEERHUB_QUEUE_NAME = "peerhub_queue"
 BROKER_PEERHUB_EXCHANGE_NAME = "peerhub_exchange"
@@ -51,12 +50,12 @@ def get_peerhub_broker_as_worker(
     return b.create_broker(config)
 
 
-C = TypeVar("C", bound=Coroutine[object, object, object])
 P = ParamSpec("P")
+T = TypeVar("T")
 
 
-def route_task_kicker_to_peerhub(
-    task: AsyncKicker[P, C],
+def route_task_to_peerhub(
+    task: t.TaskiqTask[P, T],
     peerhub_id: UUID,
-) -> AsyncKicker[P, C]:
+) -> t.TaskiqTask[P, T]:
     return task.with_labels(peerhub_id=str(peerhub_id))

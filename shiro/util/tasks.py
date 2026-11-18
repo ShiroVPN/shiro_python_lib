@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from types import CoroutineType
 from typing import Callable, ParamSpec, TypeVar
 
@@ -17,6 +17,10 @@ type TaskFunc[**P, T] = Callable[P, CoroutineType[object, object, T]]
 class TaskiqTask[**P, T]:
     name: str
     func: TaskFunc[P, T]
+    labels: dict[str, str] = field(default_factory=dict)
+
+    def with_labels(self, **labels: str) -> "TaskiqTask[P, T]":
+        return replace(self, labels=self.labels | labels)
 
 
 type TaskDecorator[**P, T] = Callable[[TaskFunc[P, T]], TaskiqTask[P, T]]
@@ -59,16 +63,14 @@ def get_task_kicker(
     return AsyncKicker(
         task_name=task.name,
         broker=broker,
-        labels={},
+        labels=dict(task.labels),
     )
 
 
 @dataclass(kw_only=True)
 class TaskSender[**P, T]:
-    task: (
-        AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]]
-        | AsyncKicker[P, CoroutineType[object, object, T]]
-    )
+    broker: AsyncBroker
+    task: TaskiqTask[P, T]
     wait_result_check_interval: float
     wait_result_timeout: float
 
@@ -77,8 +79,11 @@ class TaskSender[**P, T]:
         *task_args: P.args,
         **task_kwargs: P.kwargs,
     ) -> T:
-        kiqed_task = await self.task.kiq(*task_args, **task_kwargs)
-        observable_wait_result = observe(f"wait_result/{self.task.task_name}")(
+        kiqed_task = await get_task_kicker(
+            broker=self.broker,
+            task=self.task,
+        ).kiq(*task_args, **task_kwargs)
+        observable_wait_result = observe(f"wait_result/{self.task.name}")(
             kiqed_task.wait_result
         )
         result = await observable_wait_result(
@@ -92,17 +97,16 @@ class TaskSender[**P, T]:
 
 @dataclass(kw_only=True)
 class TaskRunner:
+    broker: AsyncBroker
     wait_result_check_interval: float
     wait_result_timeout: float
 
-    def runner(
+    def get_sender(
         self,
-        task: (
-            AsyncTaskiqDecoratedTask[P, CoroutineType[object, object, T]]
-            | AsyncKicker[P, CoroutineType[object, object, T]]
-        ),
-    ):
+        task: TaskiqTask[P, T],
+    ) -> TaskSender[P, T]:
         return TaskSender(
+            broker=self.broker,
             task=task,
             wait_result_check_interval=self.wait_result_check_interval,
             wait_result_timeout=self.wait_result_timeout,

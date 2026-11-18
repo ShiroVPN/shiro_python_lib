@@ -5,13 +5,13 @@ from pydantic import AmqpDsn, HttpUrl, RedisDsn
 from shiro.peerhub.broker import (
     PeerhubBrokerConfigForClient,
     get_peerhub_broker_as_client,
-    route_task_kicker_to_peerhub,
+    route_task_to_peerhub,
 )
 from shiro.peerhub.models import Peer
 from shiro.peerhub.tasks import get_peer
 from shiro.util.env import EnvConfig
 from shiro.util.errors import error_code_of
-from shiro.util.tasks import TaskRunner, get_task_kicker
+from shiro.util.tasks import TaskRunner
 from shiro.util.telemetry import OtelConfig, observe, set_up_otel
 
 
@@ -47,7 +47,8 @@ _ = broker.startup()
 
 # kiq tasks after broker startup
 
-task_sender = TaskRunner(
+task_runner = TaskRunner(
+    broker=broker,
     wait_result_timeout=env_config.worker_wait_result_timeout,
     wait_result_check_interval=env_config.worker_wait_result_check_interval,
 )
@@ -58,12 +59,12 @@ async def main():
     peerhub_id = uuid4()
     peer_id = uuid4()
 
-    routed_get_peer = route_task_kicker_to_peerhub(
-        task=get_task_kicker(broker=broker, task=get_peer),
+    routed_get_peer = route_task_to_peerhub(
+        task=get_peer,
         peerhub_id=peerhub_id,
     )
 
-    runner = task_sender.runner(routed_get_peer)
+    runner = task_runner.get_sender(routed_get_peer)
     try:
         peer: Peer = await runner.send(peer_id)
     except Exception as error:
