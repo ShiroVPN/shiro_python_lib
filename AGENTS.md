@@ -44,10 +44,13 @@ I will go through all the code that you write. I will reject it if it's bad.
   first, then the version is bumped and the consumers follow. They do not
   declare a local stand-in, a `TypedDict` shaped like a model, or a subclass
   that shadows a contract name.
-- A task name is an explicit string, `<service>.<name>` (`main_api.get_client`,
-  `peerhub.get_usage`, `telegram_bot.notify_topup`). Never derive it from the
+- A task name is `<SERVICE>_TASK_PREFIX` joined to a `<Service>TaskName` member:
+  `MAIN_API_TASK_PREFIX` + `MainAPITaskName.get_client` is
+  `main_api.get_client`. Both halves live in `tasks.py`, never derived from the
   module path: the colon form taskiq builds is a rename hazard, and these names
-  are matched across repositories.
+  are matched across repositories. The full string lives only in the tables
+  under `# Contract reference`, so a rename touches the prefix, the member and
+  the tables together.
 - Exchange names, queue names, bind arguments and task names are the wire
   identity: another repository matches `main_api_queue` by hand, so they stay
   module constants. They are not tunables — a value an operator may change is a
@@ -60,6 +63,9 @@ I will go through all the code that you write. I will reject it if it's bad.
 
 - Every model is a pydantic `BaseModel`. No `TypedDict`, no dataclass for a
   shape that crosses the queue.
+- An internal holder the code assembles from typed parts and nothing parses is
+  a `@dataclass(kw_only=True)` (`TaskiqTask`); pydantic stays for shapes that
+  are validated or received from outside.
 - Field names are the wire names (`telegram_id`, `sub_url`, `platega_id`). No
   alias generator, no snake_case mapping.
 - A constraint is expressed in the type: `Field(ge=0)`, `Field(gt=0, le=31)`,
@@ -103,18 +109,20 @@ I will go through all the code that you write. I will reject it if it's bad.
 
 - `shiro/<service>/models.py` — the request and result models, `__all__` on
   top, nothing else.
-- `shiro/<service>/tasks.py` — bodyless stubs decorated with
-  `declare_task(task_name=...)`, `__all__` listing them, and the
-  `# pyright: reportUnusedParameter=false` line that lets a stub take arguments
-  it never reads.
+- `shiro/<service>/tasks.py` — the `<SERVICE>_TASK_PREFIX` constant, the
+  `<Service>TaskName` `StrEnum` of bare names, the
+  `declare_<service>_task = get_declare_task_wrapper(<SERVICE>_TASK_PREFIX)`
+  factory and bodyless stubs decorated with it; `__all__` lists them, and the
+  `# pyright: reportUnusedParameter=false` line lets a stub take arguments it
+  never reads.
 - `shiro/<service>/broker.py` — the exchange and queue names, the
-  `*BrokerConfigForClient` / `*BrokerConfigForWorker` pair, the
-  `define_<service>_broker_as_client` / `_as_worker` builders and
-  `declare_task`.
+  `*BrokerConfigForClient` / `*BrokerConfigForWorker` pair and the
+  `get_<service>_broker_as_client` / `_as_worker` builders.
 - `shiro/<service>/exceptions.py` — that service's error classes, where the
   service has them.
-- `shiro/util/` — the shared broker factory (`broker.py`), the task helpers a
-  worker uses (`tasks.py`: `define_task`, `TaskRunner`, `TaskSender`), the
+- `shiro/util/` — the shared broker factory (`broker.py`), the task surface
+  (`tasks.py`: `TaskiqTask`, `get_declare_task_wrapper`,
+  `get_define_task_wrapper`, `get_task_kicker`, `TaskRunner`, `TaskSender`), the
   settings models (`env.py`), telemetry (`telemetry/`), the error codes
   (`errors.py`: `ErrorCode`, `error_code_of`) and the shared aliases
   (`types.py`).
@@ -128,13 +136,15 @@ I will go through all the code that you write. I will reject it if it's bad.
 - A new broker is built by `shiro/util/broker.create_broker`. A service module
   only names its exchange and queue; it never opens an `AioPikaBroker` of its
   own.
-- The `define_*` name says which side of the queue the process is, and the
-  config type it accepts says the same: `_as_client` takes the client config
-  and builds a queue nothing routes into, `_as_worker` takes the worker config
-  and consumes its queue.
-- A tasks module is imported only after a `define_*` call: `declare_task` reads
-  the module-level `_broker` and raises `RuntimeError` when there is none. A
-  broker module never imports `.tasks` — the order belongs to the service.
+- The `get_*` name says which side of the queue the process is, and the config
+  type it accepts says the same: `_as_client` takes the client config and
+  builds a queue nothing routes into, `_as_worker` takes the worker config and
+  consumes its queue.
+- A tasks module is imported before any broker exists: declaration builds a
+  `TaskiqTask` and touches nothing. The process's broker enters only through
+  `get_define_task_wrapper(broker)` on the worker and
+  `get_task_kicker(broker, task)` on the sender, so a missing broker is a type
+  error, not a `RuntimeError`. A broker module never imports `.tasks`.
 - A field that identifies a hub is derived, not passed by hand:
   `PeerhubBrokerConfigForWorker.peerhub_id` produces `queue_name` and
   `queue_bind_arguments` in a `model_validator(mode="after")`.
@@ -173,8 +183,11 @@ I will go through all the code that you write. I will reject it if it's bad.
   each `tasks.py` is the exception: it is what makes a bodyless stub type-check.
 - An unused result is written `_ = ...` — `reportUnusedCallResult` is on, and
   `_ = broker.startup()` in the examples is the shape.
-- A repeated long signature becomes a `TypeAlias` instead of being spelled out
-  twice.
+- A repeated long signature becomes a `type` alias instead of being spelled
+  out twice (`TaskFunc[**P, T]`, `TaskImplDecorator[**P, T]`).
+- A function that only builds a value is `get_*`, and its name carries the type
+  it returns: `get_task_kicker` returns an `AsyncKicker`,
+  `get_main_api_broker_as_client` returns an `AioPikaBroker`.
 - A field or value with a known shape gets that shape; `object`, `Any` and
   `dict[str, Any]` are not neutral choices.
 - A call with several parameters passes them by keyword.
@@ -199,13 +212,13 @@ I will go through all the code that you write. I will reject it if it's bad.
 
 ## Global state
 
-- `_broker` in each `broker.py` is the one mutable module-level name allowed,
-  and `global` appears only in the `define_*` builders and `declare_task` that
-  write and read it: the decorator runs at import and has to find the process's
-  single broker.
-- No other module-level mutable state and no second cache: a per-call value is
-  an argument, a per-process value is a field of the object that owns it.
-- `_state` in `shiro/util/telemetry/otel_setup.py` is the other declared
+- No `global` and no module-level mutable state outside the telemetry `_state`
+  below: the broker is created by the service and passed to
+  `get_define_task_wrapper` and `get_task_kicker`, and the library keeps no
+  copy.
+- No cache either: a per-call value is an argument, a per-process value is a
+  field of the object that owns it.
+- `_state` in `shiro/util/telemetry/otel_setup.py` is the one declared
   exception — the providers are process-wide by definition, and `set_up_otel`
   refuses a second call.
 
@@ -222,8 +235,9 @@ I will go through all the code that you write. I will reject it if it's bad.
   client starts before any worker has declared its queue. `_as_worker` binds
   `{"x-match": "all"} | queue_bind_arguments`.
 - `peerhub` is one queue per hub. A shared queue with per-hub bindings would
-  let any worker consume a task addressed to another hub; `route_task_to_peerhub`
-  labels the message with `peerhub_id` instead of building a queue name.
+  let any worker consume a task addressed to another hub;
+  `route_task_kicker_to_peerhub` labels the message with `peerhub_id` instead
+  of building a queue name.
 - `telegram_bot` shares the request/response shape even though a notification
   returns `None`: both roles go through `create_broker`, so a sender declares
   `telegram_bot_exchange.client`, the bot consumes `telegram_bot_queue`, and the
@@ -251,12 +265,23 @@ I will go through all the code that you write. I will reject it if it's bad.
   the task table names.
 - The sweeps are not kicked by the bot: the worker registers them on the
   broker with a taskiq `schedule` label and its scheduler kicks them. A
-  scheduled task therefore never goes through `define_task`, which carries no
-  labels.
+  scheduled task therefore never goes through `get_define_task_wrapper`, which
+  carries no labels.
+- A sender never registers a task: `get_task_kicker` returns an `AsyncKicker`.
+  `register_task` writes `local_task_registry`, so a sender that registered the
+  declaration would replace the handler the worker registered under the same
+  name.
+- A worker implements a declaration with
+  `define_<service>_task = get_define_task_wrapper(broker)` and
+  `@define_<service>_task(get_client)`. The decorator checks the
+  implementation's payload and result against the declared `TaskFunc`, so a
+  taskiq dependency is an extra parameter with a module-level `TaskiqDepends`
+  default (`db: Database = db_dependency`); without the default the check
+  rejects it.
 - `peerhub` (`shiro/peerhub/tasks.py`): `get_peer`, `add_peer`,
   `enable_peer`, `disable_peer`, `delete_peer`, `get_config`, `get_usage`. A
   peerhub worker implements them; callers reach them through
-  `route_task_to_peerhub`.
+  `route_task_kicker_to_peerhub`.
 - `telegram_bot` (`shiro/telegram_bot/tasks.py`): the four notifications the
   bot implements in its own process — `notify_subscription`, `notify_topup`,
   `notify_chargeback`, `notify_referral_bonus`. The bot owns the texts and the
@@ -297,9 +322,10 @@ Manages VPN subscriptions, client balances and transactions, and uses
 | `MainApiBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `main_api_exchange`) |
 | `MainApiBrokerConfigForWorker` | `MainApiBrokerConfigForClient`<br/>+ `queue_name: str` (default `main_api_queue`) |
 
-Call `define_main_api_broker_as_client` (a service that only kicks `main_api`
-tasks) or `define_main_api_broker_as_worker` (the process that consumes
-`main_api_queue`) before importing `.tasks`.
+Call `get_main_api_broker_as_client` (a service that only kicks `main_api`
+tasks) or `get_main_api_broker_as_worker` (the process that consumes
+`main_api_queue`). The tasks module imports first: the builder no longer gates
+it.
 
 ### Models
 
@@ -423,10 +449,10 @@ Declares the `peerhub` tasks: `main_api` uses them to manage peers, and a
 | `PeerhubBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `peerhub_exchange`) |
 | `PeerhubBrokerConfigForWorker` | `PeerhubBrokerConfigForClient`<br/>+ `peerhub_id: UUID` (to route to `peerhub`)<br/>+ `queue_name: str`, default `peerhub_queue.<peerhub_id>` — one queue per peerhub |
 
-Call `define_peerhub_broker_as_client` (a service that only kicks `peerhub`
-tasks) or `define_peerhub_broker_as_worker` (the process that consumes the queue
-of its own `peerhub_id`) before importing `.tasks`. To route a task to a peerhub
-use `route_task_to_peerhub(task, peerhub_id: UUID)`.
+Call `get_peerhub_broker_as_client` (a service that only kicks `peerhub`
+tasks) or `get_peerhub_broker_as_worker` (the process that consumes the queue
+of its own `peerhub_id`). To route a kicker to a peerhub use
+`route_task_kicker_to_peerhub(task_kicker, peerhub_id: UUID)`.
 
 ### Models
 
@@ -486,9 +512,9 @@ the tasks (it owns the texts and the chat), the services only kick them.
 | `TelegramBotBrokerConfigForClient` | `broker_url: AmqpDsn`<br/>`result_backend_url: RedisDsn`<br/>`exchange_name: str` (default `telegram_bot_exchange`) |
 | `TelegramBotBrokerConfigForWorker` | `TelegramBotBrokerConfigForClient`<br/>+ `queue_name: str` (default `telegram_bot_queue`)<br/>+ `queue_bind_arguments: dict[str, str]` (default `{}`) |
 
-Call `define_telegram_bot_broker_as_client` in a service that notifies the bot,
-or `define_telegram_bot_broker_as_worker` in the bot itself, before importing
-`.tasks`.
+Call `get_telegram_bot_broker_as_client` in a service that notifies the bot,
+or `get_telegram_bot_broker_as_worker` in the bot itself. The tasks module
+imports first: the builder no longer gates it.
 
 Neither builder sets `is_worker_process`: consuming is the process's own state,
 not a property of the config.
@@ -529,11 +555,42 @@ the bonus is already on the inviter's balance.
 | `telegram_bot.notify_chargeback` | `ChargebackNotification` | None |
 | `telegram_bot.notify_referral_bonus` | `ReferralBonusNotification` | None |
 
-The bot implements them with `shiro.util.define_task` on the broker from
-`.broker`; their taskiq dependencies (the `Bot`, the settings) are the bot's own
-and are not part of this contract.
+The bot implements them with `get_define_task_wrapper(broker)` from
+`shiro.util.tasks`; their taskiq dependencies (the `Bot`, the settings) are the
+bot's own and are not part of this contract.
 
 # Upgrading
+
+## Upgrading from 0.7.x
+
+1.0.0 moves task declaration out of the brokers. A `shiro.*.tasks` module now
+imports before the broker exists; the broker is an argument of the worker and
+sender helpers. Exchanges, queues, bindings and every task name are unchanged,
+so a 0.7.x worker and a 1.0.0 worker can run side by side during a rollout and
+no `rabbitmqctl` step is needed. The major version marks the import surface,
+not the wire.
+
+| 0.7.x | 1.0.0 |
+| --- | --- |
+| `from shiro.<service>.broker import declare_task` | `<SERVICE>_TASK_PREFIX` and `<Service>TaskName` in `shiro.<service>.tasks` |
+| `@declare_task(task_name="main_api.get_client")` | `@declare_main_api_task(MainAPITaskName.get_client)` |
+| `define_task(task)` | `get_define_task_wrapper(broker)(task)` |
+| a task passed to `TaskRunner.runner(...)` or `.kiq(...)` | `get_task_kicker(broker, task)`, an `AsyncKicker` |
+| `define_main_api_broker_as_client` / `_as_worker` | `get_main_api_broker_as_client` / `_as_worker` |
+| `define_peerhub_broker_as_client` / `_as_worker` | `get_peerhub_broker_as_client` / `_as_worker` |
+| `define_telegram_bot_broker_as_client` / `_as_worker` | `get_telegram_bot_broker_as_client` / `_as_worker` |
+| `route_task_to_peerhub(task, peerhub_id)` | `route_task_kicker_to_peerhub(task_kicker, peerhub_id)` |
+| the broker is built before the tasks import | the tasks import first; the broker is passed at the kick and implementation sites |
+
+The implementation decorator now checks its payload and result against the
+declaration, so a taskiq dependency parameter needs a default:
+`async def get_client_impl(client_data: ClientGet, db: Database = db_dependency)`.
+The default never fires — taskiq reads the marker from `param.default` — but
+without it the implementation does not satisfy `TaskFunc[P, T]`.
+
+`get_define_task_wrapper` keeps `observe` on the handler, so a worker keeps the
+execution span, and `get_task_kicker` registers nothing, so a sender cannot
+replace a handler.
 
 ## Upgrading from 0.6.x
 
@@ -595,7 +652,8 @@ name says which role the process plays — and which config type it may pass.
 in 0.7.0.
 
 `TelegramBotBrokerConfig`, `route_task_to_peerhub`, `declare_task` and
-`define_task` keep their names, and `shiro.util.broker` keeps the generic
+`define_task` kept their names through 0.6.0 (renamed in 1.0.0, see above), and
+`shiro.util.broker` keeps the generic
 `BrokerConfigForClient` / `BrokerConfigForWorker` and `create_broker`. Exchanges,
 queue names, bindings and routing are untouched, so 0.5.x and 0.6.0 workers talk
 to each other while a fleet is being upgraded.
@@ -633,8 +691,9 @@ On a RabbitMQ that ran the old chain, in this order:
 API changes: `queue_name` is no longer a client config field;
 `OTEL_COLLECTOR_ENDPOINT` is optional and `OTEL_SERVICE_NAME` defaults to
 `shiro`; the `BROKER_RESULT_BACKEND_URL` error text names the variable;
-`from shiro.util import define_task` (removed in 0.1.0) is
-`shiro.util.tasks.define_task`.
+`from shiro.util import define_task` (removed in 0.1.0) became
+`shiro.util.tasks.define_task`, which 1.0.0 replaced with
+`get_define_task_wrapper`.
 
 # Consumers and versioning
 
