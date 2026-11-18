@@ -11,8 +11,6 @@ __all__ = [
     "get_trial_subscription_config",
     "post_trial_subscription",
     "post_new_subscription",
-    "renew_subscription",
-    "update_subscription",
     "get_connection_config",
     "notify_client",
     "update_peerhub_heartbeat",
@@ -26,7 +24,6 @@ __all__ = [
     "add_subscription_days",
     "post_discounted_subscription",
     "create_payment",
-    "check_payment",
     "expire_subscriptions",
     "poll_payments",
     "poll_chargebacks",
@@ -52,8 +49,6 @@ class MainAPITaskName(StrEnum):
     get_trial_subscription_config = "get_trial_subscription_config"
     post_trial_subscription = "post_trial_subscription"
     post_new_subscription = "post_new_subscription"
-    renew_subscription = "renew_subscription"
-    update_subscription = "update_subscription"
     get_connection_config = "get_connection_config"
     notify_client = "notify_client"
     update_peerhub_heartbeat = "update_peerhub_heartbeat"
@@ -67,7 +62,6 @@ class MainAPITaskName(StrEnum):
     add_subscription_days = "add_subscription_days"
     post_discounted_subscription = "post_discounted_subscription"
     create_payment = "create_payment"
-    check_payment = "check_payment"
     expire_subscriptions = "expire_subscriptions"
     poll_payments = "poll_payments"
     poll_chargebacks = "poll_chargebacks"
@@ -114,18 +108,6 @@ async def post_trial_subscription(
 @declare_main_api_task(MainAPITaskName.post_new_subscription)
 async def post_new_subscription(
     sub_data: m.SubscriptionPost,
-) -> m.Subscription: ...
-
-
-@declare_main_api_task(MainAPITaskName.renew_subscription)
-async def renew_subscription(
-    client_data: m.ClientGet,
-) -> m.Subscription: ...
-
-
-@declare_main_api_task(MainAPITaskName.update_subscription)
-async def update_subscription(
-    client_data: m.ClientGet,
 ) -> m.Subscription: ...
 
 
@@ -193,10 +175,6 @@ async def post_discounted_subscription(
 
 @declare_main_api_task(MainAPITaskName.create_payment)
 async def create_payment(payment_data: m.PaymentPost) -> str: ...
-
-
-@declare_main_api_task(MainAPITaskName.check_payment)
-async def check_payment(payment_data: m.PaymentGet) -> m.PaymentStatus: ...
 
 
 @declare_main_api_task(MainAPITaskName.expire_subscriptions)

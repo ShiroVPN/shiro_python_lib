@@ -18,9 +18,7 @@ __all__ = [
     "AudienceGroup",
     "AnnounceGet",
     "FeatureGet",
-    "PaymentGet",
     "PaymentPost",
-    "PaymentStatus",
     "PeerHubHeartbeatData",
     "Success",
 ]
@@ -34,13 +32,6 @@ from heliclockter import datetime_utc
 from pydantic import BaseModel, Field, StringConstraints
 
 from shiro.util.types import Money, TelegramID, TelegramUsername
-
-
-class PaymentStatus(StrEnum):
-    PENDING = "PENDING"
-    CONFIRMED = "CONFIRMED"
-    CANCELED = "CANCELED"
-    CHARGEBACKED = "CHARGEBACKED"
 
 
 class SubscriptionConfig(BaseModel):
@@ -159,10 +150,6 @@ class AnnounceGet(BaseModel):
 
 class FeatureGet(ClientGet):
     feature: str = Field(min_length=1)
-
-
-class PaymentGet(BaseModel):
-    payment_id: UUID
 
 
 class PaymentPost(ClientGet):
